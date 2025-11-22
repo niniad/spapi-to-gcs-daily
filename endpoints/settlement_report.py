@@ -12,6 +12,7 @@ from datetime import datetime
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
 from utils.sp_api_auth import get_access_token
+from utils.http_retry import request_with_retry
 
 
 # ===================================================================
@@ -130,12 +131,12 @@ def run():
             'marketplaceIds': MARKETPLACE_ID
         }
         
-        response = requests.get(
+        response = request_with_retry(
+            'GET',
             f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
             headers=headers,
             params=params
         )
-        response.raise_for_status()
         
         reports = response.json().get('reports', [])
         print(f"-> 取得したレポート数: {len(reports)}")
@@ -171,13 +172,11 @@ def run():
             try:
                 # レポートドキュメントのダウンロードURL取得
                 get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
-                response = requests.get(get_doc_url, headers=headers)
-                response.raise_for_status()
+                response = request_with_retry('GET', get_doc_url, headers=headers)
                 download_url = response.json()["url"]
                 
                 # レポートをダウンロードして解凍
-                response = requests.get(download_url)
-                response.raise_for_status()
+                response = request_with_retry('GET', download_url)
                 
                 # gzip形式で圧縮されている場合は解凍
                 try:

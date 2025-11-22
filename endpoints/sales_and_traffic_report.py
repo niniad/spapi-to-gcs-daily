@@ -14,6 +14,7 @@ import requests
 from datetime import datetime, timedelta, timezone
 from google.cloud import storage
 from utils.sp_api_auth import get_access_token
+from utils.http_retry import request_with_retry
 
 
 # ===================================================================
@@ -111,12 +112,12 @@ def run():
                         payload_dict["reportOptions"] = config["report_options"]
                     
                     payload = json.dumps(payload_dict)
-                    response = requests.post(
+                    response = request_with_retry(
+                        'POST',
                         f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
                         headers=headers,
                         data=payload
                     )
-                    response.raise_for_status()
                     report_id = response.json()["reportId"]
                     print(f"    -> レポート作成リクエスト成功 (Report ID: {report_id})")
                     
@@ -126,8 +127,11 @@ def run():
                     
                     for attempt in range(15):  # 最大15回試行(約5分)
                         time.sleep(20)  # 20秒待機
-                        response = requests.get(get_report_url, headers=headers)
-                        response.raise_for_status()
+                        response = request_with_retry(
+                            'GET',
+                            get_report_url,
+                            headers=headers
+                        )
                         status = response.json().get("processingStatus")
                         
                         if status == "DONE":
@@ -146,13 +150,11 @@ def run():
                     
                     # レポートドキュメントのダウンロードURL取得
                     get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
-                    response = requests.get(get_doc_url, headers=headers)
-                    response.raise_for_status()
+                    response = request_with_retry('GET', get_doc_url, headers=headers)
                     download_url = response.json()["url"]
                     
                     # レポートをダウンロードして解凍
-                    response = requests.get(download_url)
-                    response.raise_for_status()
+                    response = request_with_retry('GET', download_url)
                     with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
                         report_content = f.read()
                     print(f"    -> レポートのダウンロードと解凍が完了。")
