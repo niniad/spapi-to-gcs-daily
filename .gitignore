@@ -7,5 +7,5 @@
 Thumbs.db
 
 # Sample/development files
-Sample/
-user_memo.txt
+temp/
+archive/
