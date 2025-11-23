@@ -121,48 +121,47 @@ def run():
                 
                 if not report_document_id:
                     print(f"    -> Warn: レポート処理がタイムアウトしました。スキップします。")
-                    continue
-                
-                # レポートドキュメントのダウンロードURL取得
-                get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
-                response = request_with_retry('GET', get_doc_url, headers=headers)
-                download_url = response.json()["url"]
-                
-                # レポートをダウンロードして解凍
-                # Ledger Detail View DataはTSV形式で返されることが多い
-                response = request_with_retry('GET', download_url)
-                
-                # gzip圧縮されているか確認して解凍
-                try:
-                    with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
-                        report_content = f.read()
-                except (OSError, UnicodeDecodeError):
-                    # gzipでない、またはUTF-8でデコードできない場合
-                    # CP932(Shift-JIS)で試行
-                    try:
-                        if response.content[:2] == b'\x1f\x8b': # GZIP magic number check
-                             with gzip.open(io.BytesIO(response.content), 'rt', encoding='cp932') as f:
-                                report_content = f.read()
-                        else:
-                            report_content = response.content.decode('cp932')
-                    except UnicodeDecodeError:
-                         # それでもだめなら ISO-8859-1 (latin-1)
-                        if response.content[:2] == b'\x1f\x8b':
-                             with gzip.open(io.BytesIO(response.content), 'rt', encoding='iso-8859-1') as f:
-                                report_content = f.read()
-                        else:
-                            report_content = response.content.decode('iso-8859-1')
-                
-                print(f"    -> レポートのダウンロード完了。")
-                
-                # GCSに保存
-                if report_content.strip():
-                    # ファイル名: prefix-YYYYMMDD-YYYYMMDD.tsv
-                    # 1日分なので start-start (同日) とする
-                    blob_name = f"{GCS_FILE_PREFIX}{current_date.strftime('%Y%m%d')}-{current_date.strftime('%Y%m%d')}.tsv"
-                    _upload_to_gcs(GCS_BUCKET_NAME, blob_name, report_content)
                 else:
-                    print("    -> レポート内容が空のためスキップ。")
+                    # レポートドキュメントのダウンロードURL取得
+                    get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
+                    response = request_with_retry('GET', get_doc_url, headers=headers)
+                    download_url = response.json()["url"]
+                    
+                    # レポートをダウンロードして解凍
+                    # Ledger Detail View DataはTSV形式で返されることが多い
+                    response = request_with_retry('GET', download_url)
+                    
+                    # gzip圧縮されているか確認して解凍
+                    try:
+                        with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
+                            report_content = f.read()
+                    except (OSError, UnicodeDecodeError):
+                        # gzipでない、またはUTF-8でデコードできない場合
+                        # CP932(Shift-JIS)で試行
+                        try:
+                            if response.content[:2] == b'\x1f\x8b': # GZIP magic number check
+                                 with gzip.open(io.BytesIO(response.content), 'rt', encoding='cp932') as f:
+                                    report_content = f.read()
+                            else:
+                                report_content = response.content.decode('cp932')
+                        except UnicodeDecodeError:
+                             # それでもだめなら ISO-8859-1 (latin-1)
+                            if response.content[:2] == b'\x1f\x8b':
+                                 with gzip.open(io.BytesIO(response.content), 'rt', encoding='iso-8859-1') as f:
+                                    report_content = f.read()
+                            else:
+                                report_content = response.content.decode('iso-8859-1')
+                    
+                    print(f"    -> レポートのダウンロード完了。")
+                    
+                    # GCSに保存
+                    if report_content.strip():
+                        # ファイル名: prefix-YYYYMMDD-YYYYMMDD.tsv
+                        # 1日分なので start-start (同日) とする
+                        blob_name = f"{GCS_FILE_PREFIX}{current_date.strftime('%Y%m%d')}-{current_date.strftime('%Y%m%d')}.tsv"
+                        _upload_to_gcs(GCS_BUCKET_NAME, blob_name, report_content)
+                    else:
+                        print("    -> レポート内容が空のためスキップ。")
             
             except Exception as e:
                 print(f"    -> Error: {date_str} の処理中にエラー発生: {e}")
