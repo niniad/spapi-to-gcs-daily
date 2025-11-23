@@ -10,7 +10,7 @@ Cloud Run Functionsのエントリポイントとして機能します。
 - 特定エンドポイントのみ: https://your-cloud-run-url?endpoint=settlement_report
 """
 
-from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report, ledger_detail_view_data
+from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report, ledger_detail_view_data, ledger_summary_view_data
 
 
 def main(request):
@@ -62,11 +62,18 @@ def main(request):
                 print("処理完了: Ledger Detail View Data Report")
                 print("=" * 60)
                 return ("Ledger Detail Report - OK", 200)
+
+            elif endpoint == 'ledger_summary':
+                ledger_summary_view_data.run()
+                print("\n" + "=" * 60)
+                print("処理完了: Ledger Summary View Data Report")
+                print("=" * 60)
+                return ("Ledger Summary Report - OK", 200)
             
             else:
                 error_msg = f"不明なエンドポイント: {endpoint}"
                 print(f"\nError: {error_msg}")
-                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report, ledger_detail")
+                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report, ledger_detail, ledger_summary")
                 return (error_msg, 400)
         
         else:
@@ -84,11 +91,14 @@ def main(request):
 
             # 4. Ledger Detail View Data Report
             ledger_detail_view_data.run()
+
+            # 5. Ledger Summary View Data Report
+            ledger_summary_view_data.run()
             
             # 将来追加予定:
-            # 5. Orders API
+            # 6. Orders API
             # orders_api.run()
-            # 6. Catalog API
+            # 7. Catalog API
             # catalog_api.run()
             # など...
             
@@ -127,4 +137,7 @@ if __name__ == "__main__":
     # main(MockRequest('brand_analytics_report'))
 
     # テスト: Ledger Detail Reportのみ
-    main(MockRequest('ledger_detail'))
+    # main(MockRequest('ledger_detail'))
+
+    # テスト: Ledger Summary Reportのみ
+    main(MockRequest('ledger_summary'))

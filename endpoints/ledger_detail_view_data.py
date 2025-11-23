@@ -136,9 +136,22 @@ def run():
                 try:
                     with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
                         report_content = f.read()
-                except OSError:
-                    # gzipでない場合はそのままテキストとして読み込む
-                    report_content = response.content.decode('utf-8')
+                except (OSError, UnicodeDecodeError):
+                    # gzipでない、またはUTF-8でデコードできない場合
+                    # CP932(Shift-JIS)で試行
+                    try:
+                        if response.content[:2] == b'\x1f\x8b': # GZIP magic number check
+                             with gzip.open(io.BytesIO(response.content), 'rt', encoding='cp932') as f:
+                                report_content = f.read()
+                        else:
+                            report_content = response.content.decode('cp932')
+                    except UnicodeDecodeError:
+                         # それでもだめなら ISO-8859-1 (latin-1)
+                        if response.content[:2] == b'\x1f\x8b':
+                             with gzip.open(io.BytesIO(response.content), 'rt', encoding='iso-8859-1') as f:
+                                report_content = f.read()
+                        else:
+                            report_content = response.content.decode('iso-8859-1')
                 
                 print(f"    -> レポートのダウンロード完了。")
                 
@@ -153,7 +166,7 @@ def run():
             
             except Exception as e:
                 print(f"    -> Error: {date_str} の処理中にエラー発生: {e}")
-                continue
+                # エラーが発生しても次の日付に進むため、continueはしない（またはfinallyでインクリメントする）
             
             finally:
                 time.sleep(2)
