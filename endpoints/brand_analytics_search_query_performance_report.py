@@ -75,9 +75,28 @@ def _get_last_complete_week_range():
     return start_date, end_date
 
 
+def _get_previous_month_range():
+    """
+    先月の初日と末日を計算します。
+    
+    Returns:
+        tuple: (start_date, end_date) datetime objects
+    """
+    utc_now = datetime.now(timezone.utc)
+    # 今月の1日
+    this_month_first = utc_now.replace(day=1)
+    # 先月の末日 = 今月の1日の1日前
+    last_month_last = this_month_first - timedelta(days=1)
+    # 先月の1日
+    last_month_first = last_month_last.replace(day=1)
+    
+    return last_month_first, last_month_last
+
+
 def run():
     """
     Brand Analytics Search Query Performance Reportの取得とGCS保存を実行します。
+    WEEK(週次)とMONTH(月次)の両方を取得します。
     """
     print("\n=== Brand Analytics Search Query Performance Report 処理開始 ===")
     
@@ -88,102 +107,138 @@ def run():
             'Content-Type': 'application/json',
             'x-amz-access-token': access_token
         }
-        
-        # データ取得期間を計算
-        start_date, end_date = _get_last_complete_week_range()
-        start_date_str = start_date.strftime('%Y-%m-%d')
-        end_date_str = end_date.strftime('%Y-%m-%d')
-        
-        print(f"データ取得期間: {start_date_str} (日) から {end_date_str} (土)")
-        
-        # レポート作成リクエスト
-        # dataStartTime/EndTimeは日付の開始時点を指定
-        payload_dict = {
-            "marketplaceIds": [MARKETPLACE_ID],
-            "reportType": "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT",
-            "dataStartTime": f"{start_date_str}T00:00:00Z",
-            "dataEndTime": f"{end_date_str}T00:00:00Z", # EndTimeは通常その日の始まりか終わりか？サンプルはT00:00:00Z
-            "reportOptions": {
-                "reportPeriod": "WEEK",
-                "asin": " ".join(ASIN_LIST)
-            }
-        }
-        
-        payload = json.dumps(payload_dict)
-        
-        print("  -> レポート作成リクエスト送信...")
-        response = request_with_retry(
-            'POST',
-            f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
-            headers=headers,
-            data=payload
-        )
-        report_id = response.json()["reportId"]
-        print(f"    -> レポート作成リクエスト成功 (Report ID: {report_id})")
-        
-        # レポート完了を待機(ポーリング)
-        get_report_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/reports/{report_id}"
-        report_document_id = None
-        
-        for attempt in range(15):  # 最大15回試行
-            time.sleep(20)
-            response = request_with_retry(
-                'GET',
-                get_report_url,
-                headers=headers
-            )
-            status = response.json().get("processingStatus")
-            
-            if status == "DONE":
-                report_document_id = response.json()["reportDocumentId"]
-                print(f"    -> レポート作成完了 (DONE)")
-                break
-            elif status in ["FATAL", "CANCELLED"]:
-                print(f"    -> Warn: レポート処理が失敗またはキャンセル (Status: {status})")
-                break
-            else:
-                print(f"    -> レポート作成中 (Status: {status})...")
-        
-        if not report_document_id:
-            print(f"    -> Warn: レポート処理がタイムアウトしました。")
-            return
 
-        # レポートドキュメントのダウンロードURL取得
-        get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
-        response = request_with_retry('GET', get_doc_url, headers=headers)
-        download_url = response.json()["url"]
+        # レポート取得設定
+        report_configs = [
+            {
+                "period": "WEEK",
+                "get_range_func": _get_last_complete_week_range,
+                "gcs_folder": "WEEK",
+                "filename_suffix_fmt": "week-%Y%m%d-%Y%m%d" # start-end
+            },
+            {
+                "period": "MONTH",
+                "get_range_func": _get_previous_month_range,
+                "gcs_folder": "MONTH",
+                "filename_suffix_fmt": "month-%Y%m" # month only (or start-end?) User requested: month-yyyymm.json
+            }
+        ]
         
-        # レポートをダウンロードして解凍
-        response = request_with_retry('GET', download_url)
-        with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
-            report_content = f.read()
-        print(f"    -> レポートのダウンロードと解凍が完了。")
-        
-        # GCSに保存
-        if report_content.strip():
-            # BigQueryの外部テーブル(JSONL)に対応するため、NDJSON形式に変換
-            try:
-                json_data = json.loads(report_content)
-                items = json_data.get("dataByAsin", [])
-                
-                if items:
-                    ndjson_lines = [json.dumps(item, ensure_ascii=False) for item in items]
-                    ndjson_content = "\n".join(ndjson_lines)
-                    
-                    # ファイル名: prefix-YYYYMMDD-YYYYMMDD.json
-                    blob_name = f"{GCS_FILE_PREFIX}{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}.json"
-                    _upload_to_gcs(GCS_BUCKET_NAME, blob_name, ndjson_content)
-                    print(f"    -> {len(items)}件のデータをNDJSON形式で保存しました。")
-                else:
-                    print("    -> データ(dataByAsin)が存在しないためスキップ。")
+        for config in report_configs:
+            period = config["period"]
+            print(f"\n--- {period} レポート処理開始 ---")
             
-            except json.JSONDecodeError as e:
-                print(f"    -> Error: JSONのパースに失敗しました: {e}")
-                # フォールバック: 生データを保存（デバッグ用）
-                blob_name = f"{GCS_FILE_PREFIX}raw-{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}.json"
-                _upload_to_gcs(GCS_BUCKET_NAME, blob_name, report_content)
-        else:
-            print("    -> レポート内容が空のためスキップ。")
+            # データ取得期間を計算
+            start_date, end_date = config["get_range_func"]()
+            start_date_str = start_date.strftime('%Y-%m-%d')
+            end_date_str = end_date.strftime('%Y-%m-%d')
+            
+            print(f"データ取得期間: {start_date_str} から {end_date_str}")
+            
+            # レポート作成リクエスト
+            payload_dict = {
+                "marketplaceIds": [MARKETPLACE_ID],
+                "reportType": "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT",
+                "dataStartTime": f"{start_date_str}T00:00:00Z",
+                "dataEndTime": f"{end_date_str}T00:00:00Z",
+                "reportOptions": {
+                    "reportPeriod": period,
+                    "asin": " ".join(ASIN_LIST)
+                }
+            }
+            
+            payload = json.dumps(payload_dict)
+            
+            print("  -> レポート作成リクエスト送信...")
+            try:
+                response = request_with_retry(
+                    'POST',
+                    f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
+                    headers=headers,
+                    data=payload
+                )
+                report_id = response.json()["reportId"]
+                print(f"    -> レポート作成リクエスト成功 (Report ID: {report_id})")
+                
+                # レポート完了を待機(ポーリング)
+                get_report_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/reports/{report_id}"
+                report_document_id = None
+                
+                for attempt in range(15):  # 最大15回試行
+                    time.sleep(20)
+                    response = request_with_retry(
+                        'GET',
+                        get_report_url,
+                        headers=headers
+                    )
+                    status = response.json().get("processingStatus")
+                    
+                    if status == "DONE":
+                        report_document_id = response.json()["reportDocumentId"]
+                        print(f"    -> レポート作成完了 (DONE)")
+                        break
+                    elif status in ["FATAL", "CANCELLED"]:
+                        print(f"    -> Warn: レポート処理が失敗またはキャンセル (Status: {status})")
+                        break
+                    else:
+                        print(f"    -> レポート作成中 (Status: {status})...")
+                
+                if not report_document_id:
+                    print(f"    -> Warn: レポート処理がタイムアウトしました。スキップします。")
+                    continue
+
+                # レポートドキュメントのダウンロードURL取得
+                get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
+                response = request_with_retry('GET', get_doc_url, headers=headers)
+                download_url = response.json()["url"]
+                
+                # レポートをダウンロードして解凍
+                response = request_with_retry('GET', download_url)
+                with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
+                    report_content = f.read()
+                print(f"    -> レポートのダウンロードと解凍が完了。")
+                
+                # GCSに保存
+                if report_content.strip():
+                    # BigQueryの外部テーブル(JSONL)に対応するため、NDJSON形式に変換
+                    try:
+                        json_data = json.loads(report_content)
+                        items = json_data.get("dataByAsin", [])
+                        
+                        if items:
+                            ndjson_lines = [json.dumps(item, ensure_ascii=False) for item in items]
+                            ndjson_content = "\n".join(ndjson_lines)
+                            
+                            # ファイル名生成
+                            # WEEK: sp-api-brand-analytics-search-query-performance-report-week-yyyymmdd-yyyymmdd.json
+                            # MONTH: sp-api-brand-analytics-search-query-performance-report-month-yyyymm.json
+                            if period == "WEEK":
+                                suffix = f"week-{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
+                            else: # MONTH
+                                suffix = f"month-{start_date.strftime('%Y%m')}"
+                            
+                            blob_name = f"{config['gcs_folder']}/{GCS_FILE_PREFIX}{suffix}.json"
+                            
+                            _upload_to_gcs(GCS_BUCKET_NAME, blob_name, ndjson_content)
+                            print(f"    -> {len(items)}件のデータをNDJSON形式で保存しました。")
+                        else:
+                            print("    -> データ(dataByAsin)が存在しないためスキップ。")
+                    
+                    except json.JSONDecodeError as e:
+                        print(f"    -> Error: JSONのパースに失敗しました: {e}")
+                        # フォールバック
+                        if period == "WEEK":
+                            suffix = f"week-raw-{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
+                        else:
+                            suffix = f"month-raw-{start_date.strftime('%Y%m')}"
+                        blob_name = f"{config['gcs_folder']}/{GCS_FILE_PREFIX}{suffix}.json"
+                        _upload_to_gcs(GCS_BUCKET_NAME, blob_name, report_content)
+                else:
+                    print("    -> レポート内容が空のためスキップ。")
+            
+            except Exception as e:
+                print(f"    -> Error: {period} レポート処理中にエラーが発生: {e}")
+                continue
 
         print("\n=== Brand Analytics Search Query Performance Report 処理完了 ===")
 
