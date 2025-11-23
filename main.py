@@ -10,7 +10,7 @@ Cloud Run Functionsのエントリポイントとして機能します。
 - 特定エンドポイントのみ: https://your-cloud-run-url?endpoint=settlement_report
 """
 
-from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report
+from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report, ledger_detail_view_data
 
 
 def main(request):
@@ -56,10 +56,17 @@ def main(request):
                 print("=" * 60)
                 return ("Brand Analytics Report - OK", 200)
             
+            elif endpoint == 'ledger_detail':
+                ledger_detail_view_data.run()
+                print("\n" + "=" * 60)
+                print("処理完了: Ledger Detail View Data Report")
+                print("=" * 60)
+                return ("Ledger Detail Report - OK", 200)
+            
             else:
                 error_msg = f"不明なエンドポイント: {endpoint}"
                 print(f"\nError: {error_msg}")
-                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report")
+                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report, ledger_detail")
                 return (error_msg, 400)
         
         else:
@@ -74,11 +81,14 @@ def main(request):
 
             # 3. Brand Analytics Search Query Performance Report
             brand_analytics_search_query_performance_report.run()
+
+            # 4. Ledger Detail View Data Report
+            ledger_detail_view_data.run()
             
             # 将来追加予定:
-            # 4. Orders API
+            # 5. Orders API
             # orders_api.run()
-            # 5. Catalog API
+            # 6. Catalog API
             # catalog_api.run()
             # など...
             
@@ -114,4 +124,7 @@ if __name__ == "__main__":
     # main(MockRequest('settlement_report'))
 
     # テスト: Brand Analytics Reportのみ
-    main(MockRequest('brand_analytics_report'))
+    # main(MockRequest('brand_analytics_report'))
+
+    # テスト: Ledger Detail Reportのみ
+    main(MockRequest('ledger_detail'))

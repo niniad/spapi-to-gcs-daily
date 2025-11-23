@@ -38,6 +38,14 @@ curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app?en
 -H "Authorization: bearer $(gcloud auth print-identity-token)"
 ```
 
+### 5. Ledger Detail View Data Report のみ実行
+Ledger Detail View Data Report の処理のみを実行します。
+
+```bash
+curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app?endpoint=ledger_detail" \
+-H "Authorization: bearer $(gcloud auth print-identity-token)"
+```
+
 ---
 **Note:**
 - `$(gcloud auth print-identity-token)` は、現在ログインしているユーザーまたはサービスアカウントのIDトークンを自動的に取得してヘッダーに設定します。
