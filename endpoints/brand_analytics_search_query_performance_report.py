@@ -161,9 +161,27 @@ def run():
         
         # GCSに保存
         if report_content.strip():
-            # ファイル名: prefix-YYYYMMDD-YYYYMMDD.json
-            blob_name = f"{GCS_FILE_PREFIX}{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}.json"
-            _upload_to_gcs(GCS_BUCKET_NAME, blob_name, report_content)
+            # BigQueryの外部テーブル(JSONL)に対応するため、NDJSON形式に変換
+            try:
+                json_data = json.loads(report_content)
+                items = json_data.get("dataByAsin", [])
+                
+                if items:
+                    ndjson_lines = [json.dumps(item, ensure_ascii=False) for item in items]
+                    ndjson_content = "\n".join(ndjson_lines)
+                    
+                    # ファイル名: prefix-YYYYMMDD-YYYYMMDD.json
+                    blob_name = f"{GCS_FILE_PREFIX}{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}.json"
+                    _upload_to_gcs(GCS_BUCKET_NAME, blob_name, ndjson_content)
+                    print(f"    -> {len(items)}件のデータをNDJSON形式で保存しました。")
+                else:
+                    print("    -> データ(dataByAsin)が存在しないためスキップ。")
+            
+            except json.JSONDecodeError as e:
+                print(f"    -> Error: JSONのパースに失敗しました: {e}")
+                # フォールバック: 生データを保存（デバッグ用）
+                blob_name = f"{GCS_FILE_PREFIX}raw-{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}.json"
+                _upload_to_gcs(GCS_BUCKET_NAME, blob_name, report_content)
         else:
             print("    -> レポート内容が空のためスキップ。")
 
