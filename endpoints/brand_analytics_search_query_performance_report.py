@@ -213,9 +213,9 @@ def run():
                             # WEEK: sp-api-brand-analytics-search-query-performance-report-week-yyyymmdd-yyyymmdd.json
                             # MONTH: sp-api-brand-analytics-search-query-performance-report-month-yyyymm.json
                             if period == "WEEK":
-                                suffix = f"week-{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
+                                suffix = f"{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
                             else: # MONTH
-                                suffix = f"month-{start_date.strftime('%Y%m')}"
+                                suffix = f"{start_date.strftime('%Y%m')}"
                             
                             blob_name = f"{GCS_FILE_PREFIX}{config['gcs_folder']}/{suffix}.json"
                             

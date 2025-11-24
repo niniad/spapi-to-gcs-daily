@@ -10,7 +10,7 @@ Google Cloud Shell（または `gcloud` コマンドが設定されたターミ�
 すべてのレポート取得処理を順次実行します。
 
 ```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app" \
+curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app" \
 -H "Authorization: bearer $(gcloud auth print-identity-token)"
 ```
 
@@ -18,7 +18,7 @@ curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app" \
 Sales and Traffic Report の処理のみを実行します。
 
 ```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app?endpoint=sales_and_traffic" \
+curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=sales_and_traffic" \
 -H "Authorization: bearer $(gcloud auth print-identity-token)"
 ```
 
@@ -26,7 +26,7 @@ curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app?en
 Settlement Report の処理のみを実行します。
 
 ```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app?endpoint=settlement_report" \
+curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=settlement_report" \
 -H "Authorization: bearer $(gcloud auth print-identity-token)"
 ```
 
@@ -34,7 +34,7 @@ curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app?en
 Brand Analytics Search Query Performance Report の処理のみを実行します。
 
 ```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app?endpoint=brand_analytics_report" \
+curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=brand_analytics_report" \
 -H "Authorization: bearer $(gcloud auth print-identity-token)"
 ```
 
@@ -42,7 +42,7 @@ curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app?en
 Ledger Detail View Data Report の処理のみを実行します。
 
 ```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app?endpoint=ledger_detail" \
+curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=ledger_detail" \
 -H "Authorization: bearer $(gcloud auth print-identity-token)"
 ```
 
@@ -50,7 +50,7 @@ curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app?en
 Ledger Summary View Data Report の処理のみを実行します。
 
 ```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.asia-northeast1.run.app?endpoint=ledger_summary" \
+curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=ledger_summary" \
 -H "Authorization: bearer $(gcloud auth print-identity-token)"
 ```
 

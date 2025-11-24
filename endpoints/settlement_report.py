@@ -57,9 +57,7 @@ def _generate_filename(report):
     """
     start_date = _format_date_for_filename(report['dataStartTime'])
     end_date = _format_date_for_filename(report['dataEndTime'])
-    report_id = report['reportId']
-    
-    return f"{FILE_PREFIX}{start_date}-{end_date}-{report_id}.tsv"
+    return f"{FILE_PREFIX}{start_date}-{end_date}.tsv"
 
 
 def _check_file_exists_in_gcs(bucket_name, blob_name):
