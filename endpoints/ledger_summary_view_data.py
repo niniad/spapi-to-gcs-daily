@@ -24,8 +24,8 @@ from utils.http_retry import request_with_retry
 # ===================================================================
 MARKETPLACE_ID = "A1VC38T7YXB528"  # 日本
 SP_API_ENDPOINT = "https://sellingpartnerapi-fe.amazon.com"
-GCS_BUCKET_NAME = "sp-api-ledger-summary-view-data"
-GCS_FILE_PREFIX = "sp-api-ledger-summary-view-data-"
+GCS_BUCKET_NAME = "sp-api-bucket"
+GCS_FILE_PREFIX = "ledger-summary-view-data/"
 
 
 def _upload_to_gcs(bucket_name, blob_name, content):

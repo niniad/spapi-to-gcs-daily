@@ -29,14 +29,14 @@ SP_API_ENDPOINT = "https://sellingpartnerapi-fe.amazon.com"
 REPORT_CONFIGS = [
     {
         "type": "DAY",
-        "gcs_bucket_name": "sp-api-sales-and-traffic-report-day",
-        "gcs_file_prefix": "sp-api-sales-and-traffic-report-day-",
+        "gcs_bucket_name": "sp-api-bucket",
+        "gcs_file_prefix": "sales-and-traffic-report/day/",
         "report_options": {}
     },
     {
         "type": "CHILD ASIN",
-        "gcs_bucket_name": "sp-api-sales-and-traffic-report-childasin",
-        "gcs_file_prefix": "sp-api-sales-and-traffic-report-childasin-",
+        "gcs_bucket_name": "sp-api-bucket",
+        "gcs_file_prefix": "sales-and-traffic-report/child-asin/",
         "report_options": {
             "dateGranularity": "DAY",
             "asinGranularity": "CHILD"

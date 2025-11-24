@@ -21,8 +21,8 @@ from utils.http_retry import request_with_retry
 MARKETPLACE_ID = "A1VC38T7YXB528"  # 日本
 SP_API_ENDPOINT = "https://sellingpartnerapi-fe.amazon.com"
 REPORT_TYPE = "GET_V2_SETTLEMENT_REPORT_DATA_FLAT_FILE_V2"
-GCS_BUCKET_NAME = "sp-api-settlement-report-data-flat-file-v2"
-FILE_PREFIX = "sp-api-settlement-report-data-flat-file-v2-"
+GCS_BUCKET_NAME = "sp-api-bucket"
+FILE_PREFIX = "settlement-report-data-flat-file-v2/"
 
 
 def _format_date_for_filename(iso_datetime_str):

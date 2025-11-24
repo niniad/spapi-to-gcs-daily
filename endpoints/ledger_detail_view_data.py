@@ -25,8 +25,8 @@ MARKETPLACE_ID = "A1VC38T7YXB528"  # 日本
 START_DAYS_AGO = 8  # 8日前のデータから取得
 END_DAYS_AGO = 1    # 1日前のデータまで取得
 SP_API_ENDPOINT = "https://sellingpartnerapi-fe.amazon.com"
-GCS_BUCKET_NAME = "sp-api-ledger-detail-view-data"
-GCS_FILE_PREFIX = "sp-api-ledger-detail-view-data-"
+GCS_BUCKET_NAME = "sp-api-bucket"
+GCS_FILE_PREFIX = "ledger-detail-view-data/"
 
 
 def _upload_to_gcs(bucket_name, blob_name, content):
@@ -158,7 +158,7 @@ def run():
                     if report_content.strip():
                         # ファイル名: prefix-YYYYMMDD-YYYYMMDD.tsv
                         # 1日分なので start-start (同日) とする
-                        blob_name = f"{GCS_FILE_PREFIX}{current_date.strftime('%Y%m%d')}-{current_date.strftime('%Y%m%d')}.tsv"
+                        blob_name = f"{GCS_FILE_PREFIX}{current_date.strftime('%Y%m%d')}.tsv"
                         _upload_to_gcs(GCS_BUCKET_NAME, blob_name, report_content)
                     else:
                         print("    -> レポート内容が空のためスキップ。")

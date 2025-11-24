@@ -22,8 +22,8 @@ from utils.http_retry import request_with_retry
 # ===================================================================
 MARKETPLACE_ID = "A1VC38T7YXB528"  # 日本
 SP_API_ENDPOINT = "https://sellingpartnerapi-fe.amazon.com"
-GCS_BUCKET_NAME = "sp-api-brand-analytics-search-query-performance-report"
-GCS_FILE_PREFIX = "sp-api-brand-analytics-search-query-performance-report-"
+GCS_BUCKET_NAME = "sp-api-bucket"
+GCS_FILE_PREFIX = "brand-analytics-search-query-performance-report/"
 
 # 対象ASINリスト
 ASIN_LIST = [
@@ -120,7 +120,7 @@ def run():
                 "period": "MONTH",
                 "get_range_func": _get_previous_month_range,
                 "gcs_folder": "MONTH",
-                "filename_suffix_fmt": "month-%Y%m" # month only (or start-end?) User requested: month-yyyymm.json
+                "filename_suffix_fmt": "month-%Y%m" # month only
             }
         ]
         
@@ -217,7 +217,7 @@ def run():
                             else: # MONTH
                                 suffix = f"month-{start_date.strftime('%Y%m')}"
                             
-                            blob_name = f"{config['gcs_folder']}/{GCS_FILE_PREFIX}{suffix}.json"
+                            blob_name = f"{GCS_FILE_PREFIX}{config['gcs_folder']}/{suffix}.json"
                             
                             _upload_to_gcs(GCS_BUCKET_NAME, blob_name, ndjson_content)
                             print(f"    -> {len(items)}件のデータをNDJSON形式で保存しました。")
@@ -231,7 +231,7 @@ def run():
                             suffix = f"week-raw-{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
                         else:
                             suffix = f"month-raw-{start_date.strftime('%Y%m')}"
-                        blob_name = f"{config['gcs_folder']}/{GCS_FILE_PREFIX}{suffix}.json"
+                        blob_name = f"{GCS_FILE_PREFIX}{config['gcs_folder']}/{suffix}.json"
                         _upload_to_gcs(GCS_BUCKET_NAME, blob_name, report_content)
                 else:
                     print("    -> レポート内容が空のためスキップ。")
