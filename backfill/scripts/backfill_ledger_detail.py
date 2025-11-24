@@ -116,12 +116,27 @@ def fetch_report(target_date, headers):
             with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
                 return f.read()
         except gzip.BadGzipFile:
-            # gzipでない場合
+            # gzipでない場合、複数のエンコーディングを試行
+            for encoding in ['utf-8', 'shift-jis', 'cp932']:
+                try:
+                    return response.content.decode(encoding)
+                except UnicodeDecodeError:
+                    continue
+            # すべて失敗した場合
+            print(f"      エラー: エンコーディングの検出に失敗しました")
+            return None
+        except UnicodeDecodeError:
+            # gzipだがutf-8でない場合
             try:
-                return response.content.decode('utf-8')
-            except UnicodeDecodeError:
-                # Shift-JISを試行
-                return response.content.decode('shift-jis')
+                with gzip.open(io.BytesIO(response.content), 'rt', encoding='shift-jis') as f:
+                    return f.read()
+            except Exception:
+                try:
+                    with gzip.open(io.BytesIO(response.content), 'rt', encoding='cp932') as f:
+                        return f.read()
+                except Exception as e:
+                    print(f"      エラー: gzip解凍失敗: {e}")
+                    return None
     
     except Exception as e:
         print(f"      エラー: {e}")
@@ -130,6 +145,8 @@ def fetch_report(target_date, headers):
 
 def backfill():
     """Ledger Detailデータのバックフィルを実行します。"""
+    consecutive_errors = 0
+    max_consecutive_errors = 10
     print("\\n=== Ledger Detail データのバックフィル開始 ===")
     
     access_token = get_access_token()
@@ -163,11 +180,24 @@ def backfill():
                 f.write(content)
             print(f"    ✓ 保存完了")
             success_count += 1
+            consecutive_errors = 0  # 成功したらリセット
         else:
             print(f"    データなし")
             skip_count += 1
+            consecutive_errors += 1
+            
+            # 連続エラー時は待機時間を増やす
+            if consecutive_errors >= max_consecutive_errors:
+                print(f"\\n  連続エラーが{max_consecutive_errors}回発生しました。60秒待機します...")
+                time.sleep(60)
+                consecutive_errors = 0
+            elif consecutive_errors >= 5:
+                wait_time = min(30, consecutive_errors * 3)
+                print(f"  {wait_time}秒待機します...")
+                time.sleep(wait_time)
+                continue  # 次のリクエストへ
         
-        time.sleep(2)  # レート制限対策
+        time.sleep(3)  # レート制限対策
         
         # 進捗表示
         if total_count % 50 == 0:

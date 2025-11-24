@@ -11,7 +11,7 @@ Cloud Run Functionsのエントリポイントとして機能します。
 """
 
 import time
-from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report, ledger_detail_view_data, ledger_summary_view_data
+from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report, ledger_detail_view_data, ledger_summary_view_data, transactions, fba_inventory, catalog_items
 
 
 def main(request):
@@ -71,10 +71,31 @@ def main(request):
                 print("=" * 60)
                 return ("Ledger Summary Report - OK", 200)
             
+            elif endpoint == 'transactions':
+                transactions.run()
+                print("\n" + "=" * 60)
+                print("処理完了: Transactions")
+                print("=" * 60)
+                return ("Transactions - OK", 200)
+            
+            elif endpoint == 'fba_inventory':
+                fba_inventory.run()
+                print("\n" + "=" * 60)
+                print("処理完了: FBA Inventory")
+                print("=" * 60)
+                return ("FBA Inventory - OK", 200)
+            
+            elif endpoint == 'catalog_items':
+                catalog_items.run()
+                print("\n" + "=" * 60)
+                print("処理完了: Catalog Items")
+                print("=" * 60)
+                return ("Catalog Items - OK", 200)
+            
             else:
                 error_msg = f"不明なエンドポイント: {endpoint}"
                 print(f"\nError: {error_msg}")
-                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report, ledger_detail, ledger_summary")
+                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report, ledger_detail, ledger_summary, transactions, fba_inventory, catalog_items")
                 return (error_msg, 400)
         
         else:
@@ -98,11 +119,18 @@ def main(request):
             time.sleep(60)
             ledger_summary_view_data.run()
             
+            # 6. Transactions
+            transactions.run()
+            
+            # 7. FBA Inventory
+            fba_inventory.run()
+            
+            # 8. Catalog Items
+            catalog_items.run()
+            
             # 将来追加予定:
-            # 6. Orders API
+            # 9. Orders API
             # orders_api.run()
-            # 7. Catalog API
-            # catalog_api.run()
             # など...
             
             print("\n" + "=" * 60)

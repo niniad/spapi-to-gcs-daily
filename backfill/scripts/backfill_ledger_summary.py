@@ -137,12 +137,27 @@ def fetch_report(year, month, start_date_str, end_date_str, headers):
             with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
                 return f.read()
         except gzip.BadGzipFile:
-            # gzipでない場合
+            # gzipでない場合、複数のエンコーディングを試行
+            for encoding in ['utf-8', 'shift-jis', 'cp932']:
+                try:
+                    return response.content.decode(encoding)
+                except UnicodeDecodeError:
+                    continue
+            # すべて失敗した場合
+            print(f"      エラー: エンコーディングの検出に失敗しました")
+            return None
+        except UnicodeDecodeError:
+            # gzipだがutf-8でない場合
             try:
-                return response.content.decode('utf-8')
-            except UnicodeDecodeError:
-                # Shift-JISを試行
-                return response.content.decode('shift-jis')
+                with gzip.open(io.BytesIO(response.content), 'rt', encoding='shift-jis') as f:
+                    return f.read()
+            except Exception:
+                try:
+                    with gzip.open(io.BytesIO(response.content), 'rt', encoding='cp932') as f:
+                        return f.read()
+                except Exception as e:
+                    print(f"      エラー: gzip解凍失敗: {e}")
+                    return None
     
     except Exception as e:
         print(f"      エラー: {e}")
@@ -163,6 +178,8 @@ def backfill():
     
     success_count = 0
     skip_count = 0
+    consecutive_errors = 0
+    max_consecutive_errors = 5
     
     for year, month, start_date_str, end_date_str in get_all_month_ranges():
         filename = f"{year:04d}{month:02d}.tsv"
@@ -181,11 +198,24 @@ def backfill():
                 f.write(content)
             print(f"    ✓ 保存完了")
             success_count += 1
+            consecutive_errors = 0
         else:
             print(f"    データなし")
             skip_count += 1
+            consecutive_errors += 1
+            
+            # 連続エラー時は待機時間を増やす
+            if consecutive_errors >= max_consecutive_errors:
+                print(f"\\n  連続エラーが{max_consecutive_errors}回発生しました。60秒待機します...")
+                time.sleep(60)
+                consecutive_errors = 0
+            elif consecutive_errors >= 3:
+                wait_time = min(30, consecutive_errors * 5)
+                print(f"  {wait_time}秒待機します...")
+                time.sleep(wait_time)
+                continue
         
-        time.sleep(2)  # レート制限対策
+        time.sleep(3)  # レート制限対策
     
     print(f"\\nLedger Summary完了: 成功 {success_count}件, スキップ {skip_count}件")
 

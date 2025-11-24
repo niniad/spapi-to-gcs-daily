@@ -4,6 +4,7 @@ Brand Analytics Search Query Performance Report Module
 このモジュールは、SP-APIのBrand Analytics Search Query Performance Reportを取得し、GCSに保存します。
 - 取得期間: 直近の完全な1週間（日曜日〜土曜日）
 - 頻度: 毎日実行（期間が重複する場合は上書き）
+- ASINリスト: FBA Inventory APIから自動取得
 """
 
 import json
@@ -15,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from google.cloud import storage
 from utils.sp_api_auth import get_access_token
 from utils.http_retry import request_with_retry
+from endpoints.fba_inventory import get_asin_list
 
 
 # ===================================================================
@@ -25,12 +27,6 @@ SP_API_ENDPOINT = "https://sellingpartnerapi-fe.amazon.com"
 GCS_BUCKET_NAME = "sp-api-bucket"
 GCS_FILE_PREFIX = "brand-analytics-search-query-performance-report/"
 
-# 対象ASINリスト
-ASIN_LIST = [
-    "B0D894LS44", "B0D89H2L67", "B0D89DTD29", "B0D88XNCHG", "B0DBSM5ZDZ",
-    "B0DBSF1CZ6", "B0DBS2WWJN", "B0DBS1ZQ7K", "B0DBS2CK1T", "B0DBSB6XY9",
-    "B0DT5P24N2", "B0DT51B33M", "B0FRZ3Z755", "B0FRZ2D3G2"
-]
 
 
 def _upload_to_gcs(bucket_name, blob_name, content):
@@ -108,6 +104,11 @@ def run():
             'x-amz-access-token': access_token
         }
 
+        # ASIN一覧を取得
+        print("\n[ASIN一覧取得] FBA Inventoryから取得中...")
+        asin_list = get_asin_list()
+        print(f"  -> 取得ASIN数: {len(asin_list)}")
+
         # レポート取得設定
         report_configs = [
             {
@@ -143,7 +144,7 @@ def run():
                 "dataEndTime": f"{end_date_str}T00:00:00Z",
                 "reportOptions": {
                     "reportPeriod": period,
-                    "asin": " ".join(ASIN_LIST)
+                    "asin": " ".join(asin_list)  # 動的に取得したASINリストを使用
                 }
             }
             

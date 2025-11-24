@@ -218,6 +218,8 @@ def backfill_weekly():
     
     success_count = 0
     skip_count = 0
+    consecutive_errors = 0
+    max_consecutive_errors = 5
     
     for start_date, end_date in get_all_week_ranges(latest_saturday):
         filename = f"{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}.json"
@@ -236,10 +238,23 @@ def backfill_weekly():
                 f.write(content)
             print(f"    ✓ 保存完了")
             success_count += 1
+            consecutive_errors = 0
         else:
             skip_count += 1
+            consecutive_errors += 1
+            
+            # 連続エラー時は待機時間を増やす
+            if consecutive_errors >= max_consecutive_errors:
+                print(f"\\n  連続エラーが{max_consecutive_errors}回発生しました。60秒待機します...")
+                time.sleep(60)
+                consecutive_errors = 0
+            elif consecutive_errors >= 3:
+                wait_time = min(30, consecutive_errors * 5)
+                print(f"  {wait_time}秒待機します...")
+                time.sleep(wait_time)
+                continue
         
-        time.sleep(2)  # レート制限対策
+        time.sleep(3)  # レート制限対策
     
     print(f"\\n週次データ完了: 成功 {success_count}件, スキップ {skip_count}件")
 
@@ -264,6 +279,8 @@ def backfill_monthly():
     
     success_count = 0
     skip_count = 0
+    consecutive_errors = 0
+    max_consecutive_errors = 5
     
     for start_date, end_date in get_all_month_ranges(last_month_end):
         filename = f"{start_date.strftime('%Y%m')}.json"
@@ -282,10 +299,23 @@ def backfill_monthly():
                 f.write(content)
             print(f"    ✓ 保存完了")
             success_count += 1
+            consecutive_errors = 0
         else:
             skip_count += 1
+            consecutive_errors += 1
+            
+            # 連続エラー時は待機時間を増やす
+            if consecutive_errors >= max_consecutive_errors:
+                print(f"\\n  連続エラーが{max_consecutive_errors}回発生しました。60秒待機します...")
+                time.sleep(60)
+                consecutive_errors = 0
+            elif consecutive_errors >= 3:
+                wait_time = min(30, consecutive_errors * 5)
+                print(f"  {wait_time}秒待機します...")
+                time.sleep(wait_time)
+                continue
         
-        time.sleep(2)  # レート制限対策
+        time.sleep(3)  # レート制限対策
     
     print(f"\\n月次データ完了: 成功 {success_count}件, スキップ {skip_count}件")
 
