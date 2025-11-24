@@ -10,6 +10,7 @@ Cloud Run Functionsのエントリポイントとして機能します。
 - 特定エンドポイントのみ: https://your-cloud-run-url?endpoint=settlement_report
 """
 
+import time
 from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report, ledger_detail_view_data, ledger_summary_view_data
 
 
@@ -93,6 +94,8 @@ def main(request):
             ledger_detail_view_data.run()
 
             # 5. Ledger Summary View Data Report
+            print("  -> クールダウン: 60秒待機中...")
+            time.sleep(60)
             ledger_summary_view_data.run()
             
             # 将来追加予定:

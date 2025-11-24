@@ -107,7 +107,9 @@ def run():
                 'POST',
                 f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
                 headers=headers,
-                data=payload
+                data=payload,
+                max_retries=10,
+                retry_delay=60
             )
             report_id = response.json()["reportId"]
             print(f"    -> レポート作成リクエスト成功 (Report ID: {report_id})")
@@ -121,7 +123,8 @@ def run():
                 response = request_with_retry(
                     'GET',
                     get_report_url,
-                    headers=headers
+                    headers=headers,
+                    max_retries=10
                 )
                 status = response.json().get("processingStatus")
                 
