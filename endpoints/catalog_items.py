@@ -146,20 +146,6 @@ def run():
                 # JSON形式で保存
                 json_content = json.dumps(output_data, ensure_ascii=False, indent=2)
                 
-                # GCSにアップロード
-                _upload_to_gcs(GCS_BUCKET_NAME, filename, json_content)
-                success_count += 1
-            else:
-                error_count += 1
-            
-            # レート制限対策: 少し待機
-            if i < len(asin_list):
-                time.sleep(0.5)
-        
-        # サマリー表示
-        print(f"\n[3/3] 処理完了")
-        print(f"  -> 成功: {success_count} 件")
-        print(f"  -> エラー: {error_count} 件")
         
         print("\n" + "=" * 60)
         print("Catalog Items - 処理完了")

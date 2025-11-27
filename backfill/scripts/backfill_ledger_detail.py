@@ -1,8 +1,8 @@
 """
 Ledger Detail View Data Report - Historical Data Backfill
 
-このスクリプトは、過去18ヶ月分のLedger Detailレポートを日次で取得します。
-取得したデータは backfill/data/ledger-detail/ に保存されます。
+This script fetches Ledger Detail reports for the past 18 months on a monthly basis.
+Data is saved to backfill/data/ledger-detail/.
 """
 
 import time
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
-# プロジェクトルートをパスに追加
+# Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from utils.http_retry import request_with_retry
@@ -20,66 +20,90 @@ from backfill.scripts.auth import get_access_token
 
 
 # ===================================================================
-# 設定
+# Settings
 # ===================================================================
-MARKETPLACE_ID = "A1VC38T7YXB528"  # 日本
+MARKETPLACE_ID = "A1VC38T7YXB528"  # Japan
 SP_API_ENDPOINT = "https://sellingpartnerapi-fe.amazon.com"
 DATA_DIR = Path(__file__).parent.parent / "data" / "ledger-detail"
 
-# バックフィル期間（過去18ヶ月）
+# Backfill period (past 18 months)
 BACKFILL_MONTHS = 18
 
 
-def get_all_date_ranges():
+def get_all_month_ranges():
     """
-    現在日から過去18ヶ月分の日付を生成します。
+    Generates month ranges for the past 18 months.
     
     Yields:
-        datetime: 各日の日付
+        tuple: (year, month, start_date_str, end_date_str)
     """
     utc_now = datetime.now(timezone.utc)
-    current_date = utc_now - timedelta(days=1)  # 昨日から開始
+    # Start from previous month
+    current_date = (utc_now.replace(day=1) - timedelta(days=1)).replace(day=1)
     cutoff_date = utc_now - timedelta(days=30 * BACKFILL_MONTHS)
     
     while current_date >= cutoff_date:
-        yield current_date
-        current_date -= timedelta(days=1)
+        year = current_date.year
+        month = current_date.month
+        
+        # Calculate end of month
+        if month == 12:
+            next_month = current_date.replace(year=year + 1, month=1)
+        else:
+            next_month = current_date.replace(month=month + 1)
+        
+        # APIリクエスト用の期間（対象月）を計算
+        # Ledger Detailはズレがないため、そのまま対象月を指定する
+        # 例: 2024-11のデータが欲しい場合、2024-11-01 ~ 2024-11-30 を指定する
+        req_start_date = current_date
+        req_end_date = next_month - timedelta(days=1)
+        
+        start_date_str = req_start_date.strftime('%Y-%m-%d')
+        end_date_str = req_end_date.strftime('%Y-%m-%d')
+        
+        yield (year, month, start_date_str, end_date_str)
+        
+        # Move to previous month
+        current_date = (current_date - timedelta(days=1)).replace(day=1)
 
 
-def fetch_report(target_date, headers):
+def fetch_report(year, month, start_date_str, end_date_str, headers):
     """
-    指定日のレポートを取得します。
+    Fetches the report for the specified month.
     
     Args:
-        target_date: 対象日
-        headers: HTTPヘッダー
+        year: Year
+        month: Month
+        start_date_str: Start date string
+        end_date_str: End date string
+        headers: HTTP headers
         
     Returns:
-        str: レポート内容（TSV形式）、またはNone
+        tuple: (content, is_rate_limited)
+            content (str): Report content (TSV format), or None
+            is_rate_limited (bool): Whether rate limited
     """
-    date_str = target_date.strftime('%Y-%m-%d')
-    
-    # レポート作成リクエスト
+    # Create report request
     payload = f'''{{
         "reportType": "GET_LEDGER_DETAIL_VIEW_DATA",
-        "dataStartTime": "{date_str}T00:00:00Z",
-        "dataEndTime": "{date_str}T23:59:59Z",
+        "dataStartTime": "{start_date_str}T00:00:00Z",
+        "dataEndTime": "{end_date_str}T23:59:59Z",
         "marketplaceIds": ["{MARKETPLACE_ID}"]
     }}'''
     
     try:
-        # レポート作成
+        # Create report
         response = request_with_retry(
             'POST',
             f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
             headers=headers,
             data=payload,
             max_retries=5,
-            retry_delay=60
+            retry_delay=50
         )
         report_id = response.json()["reportId"]
         
-        # レポート完了を待機
+        # Wait for report completion
         get_report_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/reports/{report_id}"
         report_document_id = None
         
@@ -97,57 +121,60 @@ def fetch_report(target_date, headers):
                 report_document_id = response.json()["reportDocumentId"]
                 break
             elif status in ["FATAL", "CANCELLED"]:
-                print(f"      レポート処理失敗 (Status: {status})")
-                return None
+                print(f"      Report processing failed (Status: {status})")
+                return None, False
         
         if not report_document_id:
-            print(f"      タイムアウト")
-            return None
+            print(f"      Timeout")
+            return None, False
         
-        # レポートダウンロード
+        # Download report
         get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
         response = request_with_retry('GET', get_doc_url, headers=headers)
         download_url = response.json()["url"]
         
         response = request_with_retry('GET', download_url)
         
-        # gzip解凍を試行
+        # Try gzip decompression
         try:
             with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
-                return f.read()
+                return f.read(), False
         except gzip.BadGzipFile:
-            # gzipでない場合、複数のエンコーディングを試行
+            # If not gzip, try multiple encodings
             for encoding in ['utf-8', 'shift-jis', 'cp932']:
                 try:
-                    return response.content.decode(encoding)
+                    return response.content.decode(encoding), False
                 except UnicodeDecodeError:
                     continue
-            # すべて失敗した場合
-            print(f"      エラー: エンコーディングの検出に失敗しました")
-            return None
+            # If all fail
+            print(f"      Error: Failed to detect encoding")
+            return None, False
         except UnicodeDecodeError:
-            # gzipだがutf-8でない場合
+            # gzip but not utf-8
             try:
                 with gzip.open(io.BytesIO(response.content), 'rt', encoding='shift-jis') as f:
-                    return f.read()
+                    return f.read(), False
             except Exception:
                 try:
                     with gzip.open(io.BytesIO(response.content), 'rt', encoding='cp932') as f:
-                        return f.read()
+                        return f.read(), False
                 except Exception as e:
-                    print(f"      エラー: gzip解凍失敗: {e}")
-                    return None
+                    print(f"      Error: gzip decompression failed: {e}")
+                    return None, False
     
     except Exception as e:
-        print(f"      エラー: {e}")
-        return None
+        # Return flag if 429 error
+        if "429" in str(e):
+            print(f"      Rate limit (429) detected.")
+            return None, True
+            
+        print(f"      Error: {e}")
+        return None, False
 
 
 def backfill():
-    """Ledger Detailデータのバックフィルを実行します。"""
-    consecutive_errors = 0
-    max_consecutive_errors = 10
-    print("\\n=== Ledger Detail データのバックフィル開始 ===")
+    """Executes backfill for Ledger Detail data."""
+    print("\\n=== Ledger Detail Backfill Start ===")
     
     access_token = get_access_token()
     headers = {
@@ -159,51 +186,51 @@ def backfill():
     
     success_count = 0
     skip_count = 0
-    total_count = 0
+    consecutive_errors = 0
+    max_consecutive_errors = 5
     
-    for target_date in get_all_date_ranges():
-        total_count += 1
-        filename = f"{target_date.strftime('%Y%m%d')}.tsv"
+    for year, month, start_date_str, end_date_str in get_all_month_ranges():
+        filename = f"{year:04d}{month:02d}.tsv"
         filepath = DATA_DIR / filename
         
         if filepath.exists():
-            if total_count % 50 == 0:
-                print(f"  進捗: {total_count}日処理済み (成功: {success_count}, スキップ: {skip_count})")
+            print(f"  [SKIP] {filename} (Exists)")
             skip_count += 1
             continue
         
-        print(f"  [{total_count}] {filename}")
-        content = fetch_report(target_date, headers)
+        print(f"  [Fetching] {filename}")
+        content, is_rate_limited = fetch_report(year, month, start_date_str, end_date_str, headers)
         
         if content and content.strip():
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(content)
-            print(f"    ✓ 保存完了")
+            print(f"    ✓ Saved")
             success_count += 1
-            consecutive_errors = 0  # 成功したらリセット
+            consecutive_errors = 0
         else:
-            print(f"    データなし")
+            print(f"    No data")
             skip_count += 1
             consecutive_errors += 1
             
-            # 連続エラー時は待機時間を増やす
+            # Increase wait time on consecutive errors
             if consecutive_errors >= max_consecutive_errors:
-                print(f"\\n  連続エラーが{max_consecutive_errors}回発生しました。60秒待機します...")
+                print(f"\\n  {max_consecutive_errors} consecutive errors. Waiting 60s...")
                 time.sleep(60)
                 consecutive_errors = 0
-            elif consecutive_errors >= 5:
-                wait_time = min(30, consecutive_errors * 3)
-                print(f"  {wait_time}秒待機します...")
+            elif consecutive_errors >= 3:
+                wait_time = min(30, consecutive_errors * 5)
+                print(f"  Waiting {wait_time}s...")
                 time.sleep(wait_time)
-                continue  # 次のリクエストへ
+                continue
         
-        time.sleep(3)  # レート制限対策
-        
-        # 進捗表示
-        if total_count % 50 == 0:
-            print(f"\\n  進捗: {total_count}日処理済み (成功: {success_count}, スキップ: {skip_count})\\n")
+        # Wait longer on rate limit
+        if is_rate_limited:
+            print(f"  Waiting 120s to avoid rate limit...")
+            time.sleep(120)
+        else:
+            time.sleep(50)  # Standard wait time 50s
     
-    print(f"\\nLedger Detail完了: 成功 {success_count}件, スキップ {skip_count}件, 合計 {total_count}件")
+    print(f"\\nLedger Detail Completed: Success {success_count}, Skipped {skip_count}")
 
 
 if __name__ == "__main__":
@@ -214,11 +241,11 @@ if __name__ == "__main__":
         backfill()
         
         print("\\n" + "=" * 60)
-        print("バックフィル完了")
+        print("Backfill Completed")
         
     except KeyboardInterrupt:
-        print("\\n\\n中断されました")
+        print("\\n\\nInterrupted")
     except Exception as e:
-        print(f"\\nエラー: {e}")
+        print(f"\\nError: {e}")
         import traceback
         traceback.print_exc()

@@ -142,7 +142,6 @@ def get_asin_list():
         print(f"  -> Error: ASIN一覧の取得に失敗しました: {e}")
         raise
 
-
 def run():
     """
     FBA在庫情報を取得してGCSに保存します。

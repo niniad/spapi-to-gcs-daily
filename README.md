@@ -30,15 +30,23 @@ curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoi
 -H "Authorization: bearer $(gcloud auth print-identity-token)"
 ```
 
-### 4. Brand Analytics Search Query Performance Report のみ実行
-Brand Analytics Search Query Performance Report の処理のみを実行します。
+### 4. Brand Analytics Search Query Performance Report (WEEK) のみ実行
+Brand Analytics Search Query Performance Report (WEEK) の処理のみを実行します。
 
 ```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=brand_analytics_report" \
+curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=brand_analytics_report_weekly" \
 -H "Authorization: bearer $(gcloud auth print-identity-token)"
 ```
 
-### 5. Ledger Detail View Data Report のみ実行
+### 5. Brand Analytics Search Query Performance Report (MONTH) のみ実行
+Brand Analytics Search Query Performance Report (MONTH) の処理のみを実行します。
+
+```bash
+curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=brand_analytics_report_monthly" \
+-H "Authorization: bearer $(gcloud auth print-identity-token)"
+```
+
+### 6. Ledger Detail View Data Report のみ実行
 Ledger Detail View Data Report の処理のみを実行します。
 
 ```bash
@@ -46,7 +54,7 @@ curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoi
 -H "Authorization: bearer $(gcloud auth print-identity-token)"
 ```
 
-### 6. Ledger Summary View Data Report のみ実行
+### 7. Ledger Summary View Data Report のみ実行
 Ledger Summary View Data Report の処理のみを実行します。
 
 ```bash

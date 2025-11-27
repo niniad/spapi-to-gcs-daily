@@ -43,24 +43,24 @@ def _upload_to_gcs(bucket_name, blob_name, content):
         print(f"  -> Error: GCSへのアップロードに失敗しました: {e}")
 
 
-def _get_previous_month_range():
+def _get_target_range():
     """
-    先月の初日と末日を計算します。
+    データ取得対象の期間を計算します。
+    Ledger Summaryレポートは指定した期間のデータがそのまま返されるため、
+    前月のデータを取得するために「先月」の期間を指定します。
     
     Returns:
         tuple: (start_date, end_date) datetime objects
         start_date: 先月の1日 00:00:00
-        end_date: 先月の末日 00:00:00 (時刻は呼び出し元で調整可能だが、datetimeオブジェクトとしては00:00:00)
+        end_date: 今月の1日 00:00:00 (先月のデータの終了点として使用)
     """
     utc_now = datetime.now(timezone.utc)
     # 今月の1日
     this_month_first = utc_now.replace(day=1)
-    # 先月の末日 = 今月の1日の1日前
-    last_month_last = this_month_first - timedelta(days=1)
     # 先月の1日
-    last_month_first = last_month_last.replace(day=1)
+    last_month_first = (this_month_first - timedelta(days=1)).replace(day=1)
     
-    return last_month_first, last_month_last
+    return last_month_first, this_month_first
 
 
 def run():
@@ -77,8 +77,8 @@ def run():
             'x-amz-access-token': access_token
         }
         
-        # データ取得期間を計算 (前月)
-        start_date, end_date = _get_previous_month_range()
+        # データ取得期間を計算 (API仕様に合わせて調整)
+        start_date, end_date = _get_target_range()
         
         # 文字列形式に変換 (YYYY-MM-DDT00:00:00Z)
         # dataStartTime: 月初 00:00:00Z
@@ -108,8 +108,8 @@ def run():
                 f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
                 headers=headers,
                 data=payload,
-                max_retries=10,
-                retry_delay=60
+                max_retries=5,
+                retry_delay=50
             )
             report_id = response.json()["reportId"]
             print(f"    -> レポート作成リクエスト成功 (Report ID: {report_id})")

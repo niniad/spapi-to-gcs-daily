@@ -51,11 +51,15 @@ def get_all_month_ranges():
             next_month = current_date.replace(year=year + 1, month=1)
         else:
             next_month = current_date.replace(month=month + 1)
+            
+        # APIリクエスト用の期間（対象月）を計算
+        # Ledger Summaryはズレがないため、そのまま対象月を指定する
+        # 例: 2024-11のデータが欲しい場合、2024-11-01 ~ 2024-12-01 を指定する
+        req_start_date = current_date
+        req_end_date = next_month
         
-        month_end = next_month - timedelta(days=1)
-        
-        start_date_str = current_date.strftime('%Y-%m-%d')
-        end_date_str = month_end.strftime('%Y-%m-%d')
+        start_date_str = req_start_date.strftime('%Y-%m-%d')
+        end_date_str = req_end_date.strftime('%Y-%m-%d')
         
         yield (year, month, start_date_str, end_date_str)
         
@@ -75,13 +79,15 @@ def fetch_report(year, month, start_date_str, end_date_str, headers):
         headers: HTTPヘッダー
         
     Returns:
-        str: レポート内容（TSV形式）、またはNone
+        tuple: (content, is_rate_limited)
+            content (str): レポート内容（TSV形式）、またはNone
+            is_rate_limited (bool): レート制限にかかったかどうか
     """
     # レポート作成リクエスト
     payload = f'''{{
         "reportType": "GET_LEDGER_SUMMARY_VIEW_DATA",
         "dataStartTime": "{start_date_str}T00:00:00Z",
-        "dataEndTime": "{end_date_str}T23:59:59Z",
+        "dataEndTime": "{end_date_str}T00:00:00Z",
         "marketplaceIds": ["{MARKETPLACE_ID}"],
         "reportOptions": {{
             "aggregatedByTimePeriod": "MONTHLY"
@@ -96,7 +102,7 @@ def fetch_report(year, month, start_date_str, end_date_str, headers):
             headers=headers,
             data=payload,
             max_retries=10,
-            retry_delay=60
+            retry_delay=50
         )
         report_id = response.json()["reportId"]
         
@@ -119,11 +125,11 @@ def fetch_report(year, month, start_date_str, end_date_str, headers):
                 break
             elif status in ["FATAL", "CANCELLED"]:
                 print(f"      レポート処理失敗 (Status: {status})")
-                return None
+                return None, False
         
         if not report_document_id:
             print(f"      タイムアウト")
-            return None
+            return None, False
         
         # レポートダウンロード
         get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
@@ -135,33 +141,38 @@ def fetch_report(year, month, start_date_str, end_date_str, headers):
         # gzip解凍を試行
         try:
             with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
-                return f.read()
+                return f.read(), False
         except gzip.BadGzipFile:
             # gzipでない場合、複数のエンコーディングを試行
             for encoding in ['utf-8', 'shift-jis', 'cp932']:
                 try:
-                    return response.content.decode(encoding)
+                    return response.content.decode(encoding), False
                 except UnicodeDecodeError:
                     continue
             # すべて失敗した場合
             print(f"      エラー: エンコーディングの検出に失敗しました")
-            return None
+            return None, False
         except UnicodeDecodeError:
             # gzipだがutf-8でない場合
             try:
                 with gzip.open(io.BytesIO(response.content), 'rt', encoding='shift-jis') as f:
-                    return f.read()
+                    return f.read(), False
             except Exception:
                 try:
                     with gzip.open(io.BytesIO(response.content), 'rt', encoding='cp932') as f:
-                        return f.read()
+                        return f.read(), False
                 except Exception as e:
                     print(f"      エラー: gzip解凍失敗: {e}")
-                    return None
+                    return None, False
     
     except Exception as e:
+        # 429エラーの場合はフラグを立てて返す
+        if "429" in str(e):
+            print(f"      レート制限(429)を検知しました。")
+            return None, True
+            
         print(f"      エラー: {e}")
-        return None
+        return None, False
 
 
 def backfill():
@@ -191,7 +202,7 @@ def backfill():
             continue
         
         print(f"  [取得中] {filename}")
-        content = fetch_report(year, month, start_date_str, end_date_str, headers)
+        content, is_rate_limited = fetch_report(year, month, start_date_str, end_date_str, headers)
         
         if content and content.strip():
             with open(filepath, 'w', encoding='utf-8') as f:
@@ -213,9 +224,15 @@ def backfill():
                 wait_time = min(30, consecutive_errors * 5)
                 print(f"  {wait_time}秒待機します...")
                 time.sleep(wait_time)
+                time.sleep(wait_time)
                 continue
         
-        time.sleep(3)  # レート制限対策
+        # レート制限時は長めに待機
+        if is_rate_limited:
+            print(f"  レート制限回避のため120秒待機します...")
+            time.sleep(120)
+        else:
+            time.sleep(50)  # 通常時の待機時間を50秒に設定（理論値45秒+バッファ）
     
     print(f"\\nLedger Summary完了: 成功 {success_count}件, スキップ {skip_count}件")
 

@@ -11,7 +11,7 @@ Cloud Run Functionsのエントリポイントとして機能します。
 """
 
 import time
-from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report, ledger_detail_view_data, ledger_summary_view_data, transactions, fba_inventory, catalog_items
+from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, ledger_detail_view_data, ledger_summary_view_data, transactions, fba_inventory, catalog_items
 
 
 def main(request):
@@ -50,12 +50,19 @@ def main(request):
                 print("=" * 60)
                 return ("Settlement Report - OK", 200)
             
-            elif endpoint == 'brand_analytics_report':
-                brand_analytics_search_query_performance_report.run()
+            elif endpoint == 'brand_analytics_report_weekly':
+                brand_analytics_search_query_performance_report_weekly.run()
                 print("\n" + "=" * 60)
-                print("処理完了: Brand Analytics Search Query Performance Report")
+                print("処理完了: Brand Analytics Search Query Performance Report (WEEK)")
                 print("=" * 60)
-                return ("Brand Analytics Report - OK", 200)
+                return ("Brand Analytics Report (WEEK) - OK", 200)
+
+            elif endpoint == 'brand_analytics_report_monthly':
+                brand_analytics_search_query_performance_report_monthly.run()
+                print("\n" + "=" * 60)
+                print("処理完了: Brand Analytics Search Query Performance Report (MONTH)")
+                print("=" * 60)
+                return ("Brand Analytics Report (MONTH) - OK", 200)
             
             elif endpoint == 'ledger_detail':
                 ledger_detail_view_data.run()
@@ -95,7 +102,7 @@ def main(request):
             else:
                 error_msg = f"不明なエンドポイント: {endpoint}"
                 print(f"\nError: {error_msg}")
-                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report, ledger_detail, ledger_summary, transactions, fba_inventory, catalog_items")
+                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report_weekly, brand_analytics_report_monthly, ledger_detail, ledger_summary, transactions, fba_inventory, catalog_items")
                 return (error_msg, 400)
         
         else:
@@ -109,7 +116,8 @@ def main(request):
             settlement_report.run()
 
             # 3. Brand Analytics Search Query Performance Report
-            brand_analytics_search_query_performance_report.run()
+            brand_analytics_search_query_performance_report_weekly.run()
+            brand_analytics_search_query_performance_report_monthly.run()
 
             # 4. Ledger Detail View Data Report
             ledger_detail_view_data.run()

@@ -33,10 +33,12 @@ def request_with_retry(method, url, max_retries=3, retry_delay=60, **kwargs):
             
         except requests.HTTPError as e:
             # 429エラー(Rate Limit)の場合のみリトライ
-            if e.response and e.response.status_code == 429:
+            if e.response is not None and e.response.status_code == 429:
                 if attempt < max_retries - 1:  # まだリトライ可能
-                    print(f"  -> Warn: レート制限エラー(429)が発生しました。{retry_delay}秒後にリトライします... (試行 {attempt + 1}/{max_retries})")
-                    time.sleep(retry_delay)
+                    wait_time = retry_delay * (2 ** attempt)
+                    print(f"  -> Warn: レート制限エラー(429)が発生しました。{wait_time}秒後にリトライします... (試行 {attempt + 1}/{max_retries})")
+                    print(f"     URL: {url}")
+                    time.sleep(wait_time)
                     continue
                 else:  # 最大リトライ回数に達した
                     print(f"  -> Error: 最大リトライ回数({max_retries})に達しました。")
