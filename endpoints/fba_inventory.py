@@ -55,7 +55,8 @@ def _fetch_inventory_summaries(access_token, next_token=None):
     
     headers = {
         "x-amz-access-token": access_token,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Accept": "application/json"
     }
     
     params = {
@@ -97,7 +98,12 @@ def _get_all_inventory_summaries(access_token):
         print(f"    ページ {page} を取得中...")
         response_data = _fetch_inventory_summaries(access_token, next_token)
         
-        summaries = response_data.get("inventorySummaries", [])
+        # Handle payload wrapper if present
+        if "payload" in response_data:
+            summaries = response_data["payload"].get("inventorySummaries", [])
+        else:
+            summaries = response_data.get("inventorySummaries", [])
+            
         all_summaries.extend(summaries)
         
         print(f"    {len(summaries)} 件の在庫情報を取得")
