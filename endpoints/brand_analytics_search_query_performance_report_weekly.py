@@ -99,86 +99,106 @@ def run():
         print(f"データ取得期間: {start_date_str} から {end_date_str}")
         
         # レポート作成リクエスト
-        payload_dict = {
-            "marketplaceIds": [MARKETPLACE_ID],
-            "reportType": "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT",
-            "dataStartTime": f"{start_date_str}T00:00:00.000Z",
-            "dataEndTime": f"{end_date_str}T00:00:00.000Z",
-            "reportOptions": {
-                "reportPeriod": period,
-                "asin": " ".join(asin_list)  # 動的に取得したASINリストを使用
+        # レポート作成リクエスト
+        all_ndjson_lines = []
+        chunk_size = 10
+        
+        print(f"      ASIN数: {len(asin_list)} (10件ずつ {len(asin_list)//chunk_size + 1}回に分割して取得)")
+        
+        for i in range(0, len(asin_list), chunk_size):
+            chunk = asin_list[i:i + chunk_size]
+            asin_str = " ".join(chunk)
+            
+            payload_dict = {
+                "marketplaceIds": [MARKETPLACE_ID],
+                "reportType": "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT",
+                "dataStartTime": f"{start_date_str}T00:00:00.000Z",
+                "dataEndTime": f"{end_date_str}T00:00:00.000Z",
+                "reportOptions": {
+                    "reportPeriod": period,
+                    "asin": asin_str
+                }
             }
-        }
-        
-        payload = json.dumps(payload_dict)
-        
-        print("  -> レポート作成リクエスト送信...")
-        try:
-            response = request_with_retry(
-                'POST',
-                f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
-                headers=headers,
-                data=payload
-            )
-            report_id = response.json()["reportId"]
-            print(f"    -> レポート作成リクエスト成功 (Report ID: {report_id})")
             
-            # レポート完了を待機(ポーリング)
-            get_report_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/reports/{report_id}"
-            report_document_id = None
+            payload = json.dumps(payload_dict)
             
-            for attempt in range(15):  # 最大15回試行
-                time.sleep(20)
+            print(f"  -> [Chunk {i//chunk_size + 1}] レポート作成リクエスト送信...")
+            try:
                 response = request_with_retry(
-                    'GET',
-                    get_report_url,
-                    headers=headers
+                    'POST',
+                    f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
+                    headers=headers,
+                    data=payload
                 )
-                status = response.json().get("processingStatus")
+                report_id = response.json()["reportId"]
+                print(f"    -> [Chunk {i//chunk_size + 1}] レポート作成リクエスト成功 (Report ID: {report_id})")
                 
-            get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
-            response = request_with_retry('GET', get_doc_url, headers=headers)
-            download_url = response.json()["url"]
-            
-            # レポートをダウンロードして解凍
-            response = request_with_retry('GET', download_url)
-            with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
-                report_content = f.read()
-            print(f"    -> レポートのダウンロードと解凍が完了。")
-            
-            # GCSに保存
-            if report_content.strip():
-                # BigQueryの外部テーブル(JSONL)に対応するため、NDJSON形式に変換
-                try:
-                    json_data = json.loads(report_content)
-                    items = json_data.get("dataByAsin", [])
+                # レポート完了を待機(ポーリング)
+                get_report_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/reports/{report_id}"
+                report_document_id = None
+                
+                for attempt in range(15):  # 最大15回試行
+                    time.sleep(20)
+                    response = request_with_retry(
+                        'GET',
+                        get_report_url,
+                        headers=headers
+                    )
+                    status = response.json().get("processingStatus")
+                    if status == "DONE":
+                        report_document_id = response.json()["reportDocumentId"]
+                        break
+                    elif status in ["FATAL", "CANCELLED"]:
+                        print(f"    -> [Chunk {i//chunk_size + 1}] レポート処理失敗 (Status: {status})")
+                        break
+                
+                if not report_document_id:
+                    print(f"    -> [Chunk {i//chunk_size + 1}] タイムアウトまたは失敗")
+                    continue
                     
-                    if items:
-                        ndjson_lines = [json.dumps(item, ensure_ascii=False) for item in items]
-                        ndjson_content = "\n".join(ndjson_lines)
-                        
-                        # ファイル名生成
-                        # WEEK: sp-api-brand-analytics-search-query-performance-report-week-yyyymmdd-yyyymmdd.json
-                        suffix = f"{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
-                        
-                        blob_name = f"{GCS_FILE_PREFIX}{gcs_folder}/{suffix}.json"
-                        
-                        _upload_to_gcs(GCS_BUCKET_NAME, blob_name, ndjson_content)
-                        print(f"    -> {len(items)}件のデータをNDJSON形式で保存しました。")
-                    else:
-                        print("    -> データ(dataByAsin)が存在しないためスキップ。")
+                get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
+                response = request_with_retry('GET', get_doc_url, headers=headers)
+                download_url = response.json()["url"]
                 
-                except json.JSONDecodeError as e:
-                    print(f"    -> Error: JSONのパースに失敗しました: {e}")
-                    # フォールバック
-                    suffix = f"week-raw-{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
-                    blob_name = f"{GCS_FILE_PREFIX}{gcs_folder}/{suffix}.json"
-                    _upload_to_gcs(GCS_BUCKET_NAME, blob_name, report_content)
-            else:
-                print("    -> レポート内容が空のためスキップ。")
-        
-        except Exception as e:
-            print(f"    -> Error: {period} レポート処理中にエラーが発生: {e}")
+                # レポートをダウンロードして解凍
+                response = request_with_retry('GET', download_url)
+                with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
+                    report_content = f.read()
+                print(f"    -> [Chunk {i//chunk_size + 1}] ダウンロード完了")
+                
+                # NDJSON形式に変換してリストに追加
+                if report_content.strip():
+                    try:
+                        json_data = json.loads(report_content)
+                        items = json_data.get("dataByAsin", [])
+                        
+                        if items:
+                            chunk_lines = [json.dumps(item, ensure_ascii=False) for item in items]
+                            all_ndjson_lines.extend(chunk_lines)
+                            print(f"    -> [Chunk {i//chunk_size + 1}] {len(items)}件取得")
+                        else:
+                            print(f"    -> [Chunk {i//chunk_size + 1}] データなし")
+                    except json.JSONDecodeError as e:
+                        print(f"    -> [Chunk {i//chunk_size + 1}] Error: JSONパース失敗: {e}")
+                else:
+                    print(f"    -> [Chunk {i//chunk_size + 1}] コンテンツ空")
+            
+            except Exception as e:
+                print(f"    -> [Chunk {i//chunk_size + 1}] Error: {e}")
+                continue
+
+        # GCSに保存（全チャンク統合後）
+        if all_ndjson_lines:
+            ndjson_content = "\n".join(all_ndjson_lines)
+            
+            # ファイル名生成
+            suffix = f"{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
+            blob_name = f"{GCS_FILE_PREFIX}{gcs_folder}/{suffix}.json"
+            
+            _upload_to_gcs(GCS_BUCKET_NAME, blob_name, ndjson_content)
+            print(f"    -> 合計 {len(all_ndjson_lines)}件のデータをNDJSON形式で保存しました。")
+        else:
+            print("    -> 保存対象のデータがありませんでした。")
 
         print("\n=== Brand Analytics Search Query Performance Report (WEEK) 処理完了 ===")
 

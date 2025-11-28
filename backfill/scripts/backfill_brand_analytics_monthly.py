@@ -27,15 +27,70 @@ MARKETPLACE_ID = "A1VC38T7YXB528"  # 日本
 SP_API_ENDPOINT = "https://sellingpartnerapi-fe.amazon.com"
 DATA_DIR = Path(__file__).parent.parent / "data" / "brand-analytics"
 
-# 対象ASINリスト
-ASIN_LIST = [
-    "B0D894LS44", "B0D89H2L67", "B0D89DTD29", "B0D88XNCHG", "B0DBSM5ZDZ",
-    "B0DBSF1CZ6", "B0DBS2WWJN", "B0DBS1ZQ7K", "B0DBS2CK1T", "B0DBSB6XY9",
-    "B0DT5P24N2", "B0DT51B33M", "B0FRZ3Z755", "B0FRZ2D3G2"
-]
 
 # バックフィル期間（過去2年）
 BACKFILL_YEARS = 2
+
+
+def _fetch_inventory_summaries(access_token, next_token=None):
+    """FBA Inventory APIから在庫サマリーを取得します。"""
+    url = f"{SP_API_ENDPOINT}/fba/inventory/v1/summaries"
+    
+    headers = {
+        "x-amz-access-token": access_token,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    }
+    
+    params = {
+        "marketplaceIds": MARKETPLACE_ID,
+        "granularityType": "Marketplace",
+        "granularityId": MARKETPLACE_ID
+    }
+    
+    if next_token:
+        params["nextToken"] = next_token
+    
+    response = request_with_retry("GET", url, headers=headers, params=params)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        error_msg = f"FBA Inventory API Error: {response.status_code} - {response.text}"
+        print(f"  -> Error: {error_msg}")
+        raise Exception(error_msg)
+
+
+def get_asin_list_from_api(access_token):
+    """FBA在庫からASINリストを取得します。"""
+    all_asins = set()
+    next_token = None
+    page = 1
+    
+    while True:
+        response_data = _fetch_inventory_summaries(access_token, next_token)
+        
+        # Handle payload wrapper if present
+        if "payload" in response_data:
+            summaries = response_data["payload"].get("inventorySummaries", [])
+        else:
+            summaries = response_data.get("inventorySummaries", [])
+            
+        for summary in summaries:
+            asin = summary.get("asin")
+            if asin:
+                all_asins.add(asin)
+        
+        # 次のページがあるかチェック
+        pagination = response_data.get("pagination", {})
+        next_token = pagination.get("nextToken")
+        
+        if not next_token:
+            break
+            
+        page += 1
+    
+    return sorted(list(all_asins))
 
 
 def get_all_month_ranges(start_from_date):
@@ -67,15 +122,18 @@ def get_all_month_ranges(start_from_date):
         current_date = (current_date - timedelta(days=1)).replace(day=1)
 
 
-def fetch_report(period, start_date, end_date, headers, max_attempts=20, retry_delay=15):
+
+
+def fetch_report(period, start_date, end_date, headers, asin_list, max_attempts=20, retry_delay=15):
     """
-    レポートを取得します。
+    レポートを取得します。ASINリストを分割してリクエストし、結果を統合します。
     
     Args:
         period: "WEEK" または "MONTH"
         start_date: 開始日
         end_date: 終了日
         headers: HTTPヘッダー
+        asin_list: 対象ASINのリスト
         
     Returns:
         tuple: (content, is_fatal, is_timeout)
@@ -86,82 +144,98 @@ def fetch_report(period, start_date, end_date, headers, max_attempts=20, retry_d
     start_date_str = start_date.strftime('%Y-%m-%d')
     end_date_str = end_date.strftime('%Y-%m-%d')
     
-    # レポート作成リクエスト
-    payload_dict = {
-        "marketplaceIds": [MARKETPLACE_ID],
-        "reportType": "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT",
-        "dataStartTime": f"{start_date_str}T00:00:00.000Z",
-        "dataEndTime": f"{end_date_str}T00:00:00.000Z",
-        "reportOptions": {
-            "reportPeriod": period,
-            "asin": " ".join(ASIN_LIST)
+    all_ndjson_lines = []
+    chunk_size = 10
+    
+    print(f"      ASIN数: {len(asin_list)} (10件ずつ {len(asin_list)//chunk_size + 1}回に分割して取得)")
+    
+    for i in range(0, len(asin_list), chunk_size):
+        chunk = asin_list[i:i + chunk_size]
+        asin_str = " ".join(chunk)
+        
+        # レポート作成リクエスト
+        payload_dict = {
+            "marketplaceIds": [MARKETPLACE_ID],
+            "reportType": "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT",
+            "dataStartTime": f"{start_date_str}T00:00:00.000Z",
+            "dataEndTime": f"{end_date_str}T00:00:00.000Z",
+            "reportOptions": {
+                "reportPeriod": period,
+                "asin": asin_str
+            }
         }
-    }
-    
-    payload = json.dumps(payload_dict)
-    
-    try:
-        # レポート作成
-        response = request_with_retry(
-            'POST',
-            f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
-            headers=headers,
-            data=payload,
-            max_retries=5,
-            retry_delay=50
-        )
-        report_id = response.json()["reportId"]
         
-        # レポート完了を待機
-        get_report_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/reports/{report_id}"
-        report_document_id = None
+        payload = json.dumps(payload_dict)
         
-        for attempt in range(max_attempts):
-            time.sleep(retry_delay)
+        try:
+            # レポート作成
             response = request_with_retry(
-                'GET',
-                get_report_url,
+                'POST',
+                f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
                 headers=headers,
-                max_retries=3
+                data=payload,
+                max_retries=5,
+                retry_delay=50
             )
-            status = response.json().get("processingStatus")
+            report_id = response.json()["reportId"]
             
-            if attempt % 5 == 0:
-                print(f"      ...処理中 (Status: {status}, {attempt+1}/{max_attempts})")
+            # レポート完了を待機
+            get_report_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/reports/{report_id}"
+            report_document_id = None
             
-            if status == "DONE":
-                report_document_id = response.json()["reportDocumentId"]
-                break
-            elif status in ["FATAL", "CANCELLED"]:
-                print(f"      レポート処理失敗 (Status: {status})")
-                return None, True, False
+            for attempt in range(max_attempts):
+                time.sleep(retry_delay)
+                response = request_with_retry(
+                    'GET',
+                    get_report_url,
+                    headers=headers,
+                    max_retries=3
+                )
+                status = response.json().get("processingStatus")
+                
+                if attempt % 5 == 0:
+                    print(f"        [Chunk {i//chunk_size + 1}] ...処理中 (Status: {status}, {attempt+1}/{max_attempts})")
+                
+                if status == "DONE":
+                    report_document_id = response.json()["reportDocumentId"]
+                    break
+                elif status in ["FATAL", "CANCELLED"]:
+                    print(f"        [Chunk {i//chunk_size + 1}] レポート処理失敗 (Status: {status})")
+                    # FATALの場合はこのチャンクをスキップして次へ（または全体を失敗させるか要検討だが、ここではスキップ）
+                    break
+            
+            if not report_document_id:
+                print(f"        [Chunk {i//chunk_size + 1}] タイムアウトまたは失敗")
+                continue
+            
+            # レポートダウンロード
+            get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
+            response = request_with_retry('GET', get_doc_url, headers=headers)
+            download_url = response.json()["url"]
+            
+            response = request_with_retry('GET', download_url)
+            with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
+                report_content = f.read()
+            
+            # NDJSON形式に変換してリストに追加
+            json_data = json.loads(report_content)
+            items = json_data.get("dataByAsin", [])
+            
+            if items:
+                chunk_lines = [json.dumps(item, ensure_ascii=False) for item in items]
+                all_ndjson_lines.extend(chunk_lines)
+                print(f"        [Chunk {i//chunk_size + 1}] {len(items)}件取得")
+            else:
+                print(f"        [Chunk {i//chunk_size + 1}] データなし")
         
-        if not report_document_id:
-            print(f"      タイムアウト ({max_attempts}回試行しても完了しませんでした)")
-            return None, False, True
-        
-        # レポートダウンロード
-        get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
-        response = request_with_retry('GET', get_doc_url, headers=headers)
-        download_url = response.json()["url"]
-        
-        response = request_with_retry('GET', download_url)
-        with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
-            report_content = f.read()
-        
-        # NDJSON形式に変換
-        json_data = json.loads(report_content)
-        items = json_data.get("dataByAsin", [])
-        
-        if items:
-            ndjson_lines = [json.dumps(item, ensure_ascii=False) for item in items]
-            return "\n".join(ndjson_lines), False, False
-        else:
-            print(f"      データなし")
-            return None, False, False
-    
-    except Exception as e:
-        print(f"      エラー: {e}")
+        except Exception as e:
+            print(f"        [Chunk {i//chunk_size + 1}] エラー: {e}")
+            # エラーが発生しても他のチャンクは続行
+            continue
+
+    if all_ndjson_lines:
+        return "\n".join(all_ndjson_lines), False, False
+    else:
         return None, False, False
 
 
@@ -190,6 +264,15 @@ def backfill_monthly():
     max_consecutive_errors = 5
     max_consecutive_timeouts = 3
     
+    # ASINリストを取得
+    print("  -> FBA InventoryからASINリストを取得中...")
+    try:
+        asin_list = get_asin_list_from_api(access_token)
+        print(f"  -> 取得ASIN数: {len(asin_list)}")
+    except Exception as e:
+        print(f"  -> Error: ASINリストの取得に失敗しました: {e}")
+        return
+
     for start_date, end_date in get_all_month_ranges(last_month_end):
         filename = f"{start_date.strftime('%Y%m')}.json"
         filepath = month_dir / filename
@@ -201,7 +284,7 @@ def backfill_monthly():
         
         print(f"  [取得中] {filename}")
         # 月次はじっくり待つ (60回 x 15秒 = 900秒 = 15分)
-        content, is_fatal, is_timeout = fetch_report("MONTH", start_date, end_date, headers, max_attempts=60, retry_delay=15)
+        content, is_fatal, is_timeout = fetch_report("MONTH", start_date, end_date, headers, asin_list, max_attempts=60, retry_delay=15)
         
         if content:
             with open(filepath, 'w', encoding='utf-8') as f:
