@@ -45,12 +45,14 @@ def get_all_date_ranges():
         current_date -= timedelta(days=1)
 
 
-def fetch_transactions(target_date, headers):
+def fetch_transactions(target_date_jst, headers):
     """
-    指定日のトランザクションを取得します。
+    指定日(日本時間)のトランザクションを取得します。
+    日本時間の日付に対して、UTC時間で前日15:00から当日15:00までを取得します。
+    例: 2025-06-17(JST) → postedAfter=2025-06-16T15:00:00.00Z, postedBefore=2025-06-17T15:00:00.00Z
     
     Args:
-        target_date: 対象日
+        target_date_jst: 対象日(日本時間の日付文字列 YYYY-MM-DD)
         headers: HTTPヘッダー
         
     Returns:
@@ -58,12 +60,12 @@ def fetch_transactions(target_date, headers):
             transactions (list): トランザクションのリスト
             is_rate_limited (bool): レート制限にかかったかどうか
     """
-    # 日付範囲: 対象日の00:00:00から翌日の00:00:00まで
-    posted_after = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-    posted_before = posted_after + timedelta(days=1)
+    # 日本時間の日付をパース
+    jst_date = datetime.strptime(target_date_jst, '%Y-%m-%d')
     
-    posted_after_str = posted_after.strftime('%Y-%m-%dT%H:%M:%SZ')
-    posted_before_str = posted_before.strftime('%Y-%m-%dT%H:%M:%SZ')
+    # 日本時間で00:00:00から23:59:59まで
+    posted_after_str = f"{target_date_jst}T00:00:00.00+09:00"
+    posted_before_str = f"{target_date_jst}T23:59:59.00+09:00"
     
     all_transactions = []
     next_token = None
@@ -127,9 +129,11 @@ def backfill():
     consecutive_errors = 0
     max_consecutive_errors = 5
     
-    for target_date in get_all_date_ranges():
+    for target_date_utc in get_all_date_ranges():
         total_count += 1
-        filename = f"{target_date.strftime('%Y%m%d')}.json"
+        # 日本時間の日付に変換してファイル名を生成
+        target_date_jst = (target_date_utc + timedelta(hours=9)).strftime('%Y-%m-%d')
+        filename = f"{target_date_jst.replace('-', '')}.json"
         filepath = DATA_DIR / filename
         
         if filepath.exists():
@@ -139,14 +143,14 @@ def backfill():
             continue
         
         print(f"  [{total_count}] {filename}")
-        transactions, is_rate_limited = fetch_transactions(target_date, headers)
+        transactions, is_rate_limited = fetch_transactions(target_date_jst, headers)
         
         if transactions is not None:
             # NDJSON形式で保存
             if transactions:
                 with open(filepath, 'w', encoding='utf-8') as f:
                     for txn in transactions:
-                        f.write(json.dumps(txn, ensure_ascii=False) + '\\n')
+                        f.write(json.dumps(txn, ensure_ascii=False) + '\n')
                 print(f"    ✓ 保存完了 ({len(transactions)}件)")
             else:
                 # 空ファイルを作成して処理済みとする

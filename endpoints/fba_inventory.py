@@ -167,22 +167,25 @@ def run():
             print("  -> Warn: 在庫情報が見つかりませんでした")
             return
         
-        # 現在日時でファイル名を生成
+        # 現在日時でファイル名を生成 (YYYYMMDD.json)
         current_date = datetime.now().strftime("%Y%m%d")
-        filename = f"{GCS_FILE_PREFIX}fba_inventory_{current_date}.json"
+        filename = f"{GCS_FILE_PREFIX}{current_date}.json"
         
-        # JSON形式で保存
-        inventory_data = {
-            "fetchedAt": datetime.now().isoformat(),
-            "marketplaceId": MARKETPLACE_ID,
-            "totalItems": len(summaries),
-            "inventorySummaries": summaries
-        }
-        
-        json_content = json.dumps(inventory_data, ensure_ascii=False, indent=2)
+        # NDJSON形式で保存
+        ndjson_lines = []
+        for summary in summaries:
+            # メタデータを追加
+            item_data = {
+                "fetchedAt": datetime.now().isoformat(),
+                "marketplaceId": MARKETPLACE_ID,
+                "inventorySummary": summary
+            }
+            ndjson_lines.append(json.dumps(item_data, ensure_ascii=False))
+            
+        ndjson_content = "\n".join(ndjson_lines)
         
         # GCSにアップロード
-        _upload_to_gcs(GCS_BUCKET_NAME, filename, json_content)
+        _upload_to_gcs(GCS_BUCKET_NAME, filename, ndjson_content)
         
         # ASIN一覧を表示
         asin_list = [s.get("asin") for s in summaries if s.get("asin")]

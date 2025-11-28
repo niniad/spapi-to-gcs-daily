@@ -120,17 +120,18 @@ def backfill():
         print(f"\\n[2/2] カタログ情報を取得中（全{len(asin_list)}件）...")
         
         current_date = datetime.now().strftime("%Y%m%d")
+        filename = f"{current_date}.json"
+        filepath = DATA_DIR / filename
+        
+        if filepath.exists():
+            print(f"  [SKIP] {filename} (既存)")
+            return
+
+        all_catalog_data = []
         success_count = 0
         error_count = 0
         
         for i, asin in enumerate(asin_list, 1):
-            filename = f"catalog_item_{asin}_{current_date}.json"
-            filepath = DATA_DIR / filename
-            
-            if filepath.exists():
-                print(f"  [{i}/{len(asin_list)}] {asin} (スキップ: 既存)")
-                continue
-            
             print(f"  [{i}/{len(asin_list)}] {asin}")
             
             # カタログ情報を取得
@@ -138,20 +139,26 @@ def backfill():
             
             if catalog_data:
                 # メタデータを追加
-                output_data = {
+                item_data = {
                     "fetchedAt": datetime.now().isoformat(),
                     "marketplaceId": MARKETPLACE_ID,
                     "asin": asin,
                     "catalogData": catalog_data
                 }
-                
-                with open(filepath, 'w', encoding='utf-8') as f:
-                    json.dump(output_data, f, ensure_ascii=False, indent=2)
-                
+                all_catalog_data.append(item_data)
                 success_count += 1
             else:
                 error_count += 1
         
+        # まとめて保存 (NDJSON形式)
+        if all_catalog_data:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                for item in all_catalog_data:
+                    f.write(json.dumps(item, ensure_ascii=False) + '\n')
+            print(f"    ✓ 保存完了 ({len(all_catalog_data)}件)")
+        else:
+            print("    データなし")
+
         print(f"\\nCatalog Items完了: 成功 {success_count}件, エラー {error_count}件")
         
     except Exception as e:

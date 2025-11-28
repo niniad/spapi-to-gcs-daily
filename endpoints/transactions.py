@@ -30,19 +30,23 @@ GCS_PREFIX = "transactions/"
 def get_posted_date_range():
     """
     取得対象の日付範囲を計算します。
+    日本時間の昨日に対して、00:00:00から23:59:59までを取得します。
+    例: 日本時間2025-06-17 → postedAfter=2025-06-17T00:00:00.00+09:00, postedBefore=2025-06-17T23:59:59.00+09:00
     
     Returns:
-        tuple: (posted_after, posted_before) のISO 8601形式文字列
+        tuple: (posted_after, posted_before, jst_date_str) のタプル
     """
     utc_now = datetime.now(timezone.utc)
-    # 昨日の00:00:00から今日の00:00:00まで
-    posted_before = utc_now.replace(hour=0, minute=0, second=0, microsecond=0)
-    posted_after = posted_before - timedelta(days=1)
+    # 日本時間の昨日を計算
+    jst_now = utc_now + timedelta(hours=9)
+    jst_yesterday = jst_now - timedelta(days=1)
+    jst_date_str = jst_yesterday.strftime('%Y-%m-%d')
     
-    return (
-        posted_after.strftime('%Y-%m-%dT%H:%M:%SZ'),
-        posted_before.strftime('%Y-%m-%dT%H:%M:%SZ')
-    )
+    # 日本時間で00:00:00から23:59:59まで
+    posted_after = f"{jst_date_str}T00:00:00.00+09:00"
+    posted_before = f"{jst_date_str}T23:59:59.00+09:00"
+    
+    return (posted_after, posted_before, jst_date_str)
 
 
 def fetch_transactions(posted_after, posted_before, headers):
@@ -105,13 +109,13 @@ def fetch_transactions(posted_after, posted_before, headers):
     return all_transactions
 
 
-def save_to_gcs(transactions, posted_date, bucket_name, prefix):
+def save_to_gcs(transactions, jst_date_str, bucket_name, prefix):
     """
     トランザクションデータをGCSに保存します。
     
     Args:
         transactions: トランザクションのリスト
-        posted_date: 投稿日 (YYYY-MM-DD)
+        jst_date_str: 日本時間の日付 (YYYY-MM-DD)
         bucket_name: GCSバケット名
         prefix: GCSプレフィックス
     """
@@ -123,8 +127,8 @@ def save_to_gcs(transactions, posted_date, bucket_name, prefix):
     ndjson_lines = [json.dumps(txn, ensure_ascii=False) for txn in transactions]
     ndjson_content = "\n".join(ndjson_lines)
     
-    # ファイル名生成 (YYYYMMDD.json)
-    filename = f"{posted_date.replace('-', '')}.json"
+    # ファイル名生成 (YYYYMMDD.json) - 日本時間の日付を使用
+    filename = f"{jst_date_str.replace('-', '')}.json"
     blob_name = f"{prefix}{filename}"
     
     # GCSにアップロード
@@ -156,11 +160,10 @@ def run():
     
     try:
         # 日付範囲を計算
-        posted_after, posted_before = get_posted_date_range()
-        posted_date = datetime.fromisoformat(posted_after.replace('Z', '+00:00')).strftime('%Y-%m-%d')
+        posted_after, posted_before, jst_date_str = get_posted_date_range()
         
-        print(f"\n対象期間: {posted_after} ~ {posted_before}")
-        print(f"対象日: {posted_date}")
+        print(f"\n対象期間(UTC): {posted_after} ~ {posted_before}")
+        print(f"対象日(JST): {jst_date_str}")
         
         # アクセストークン取得
         print("\nアクセストークンを取得中...")
@@ -181,7 +184,7 @@ def run():
         
         # GCSに保存
         print("\nGCSに保存中...")
-        save_to_gcs(transactions, posted_date, GCS_BUCKET, GCS_PREFIX)
+        save_to_gcs(transactions, jst_date_str, GCS_BUCKET, GCS_PREFIX)
         
         print("\n" + "=" * 60)
         print("✓ Transactions API - 処理完了")

@@ -112,16 +112,16 @@ def backfill():
         filename = f"{current_date}.json"
         filepath = DATA_DIR / filename
         
-        # JSON形式で保存
-        inventory_data = {
-            "fetchedAt": datetime.now().isoformat(),
-            "marketplaceId": MARKETPLACE_ID,
-            "totalItems": len(summaries),
-            "inventorySummaries": summaries
-        }
-        
+        # NDJSON形式で保存
         with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(inventory_data, f, ensure_ascii=False, indent=2)
+            for summary in summaries:
+                # メタデータを追加
+                item_data = {
+                    "fetchedAt": datetime.now().isoformat(),
+                    "marketplaceId": MARKETPLACE_ID,
+                    "inventorySummary": summary
+                }
+                f.write(json.dumps(item_data, ensure_ascii=False) + '\n')
             
         print(f"  ✓ 保存完了: {filepath}")
         

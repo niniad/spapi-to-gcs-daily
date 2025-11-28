@@ -122,29 +122,43 @@ def run():
         print(f"\n[2/3] カタログ情報を取得中（全{len(asin_list)}件）...")
         
         current_date = datetime.now().strftime("%Y%m%d")
+        all_catalog_data = []
         success_count = 0
         error_count = 0
         
         for i, asin in enumerate(asin_list, 1):
-            print(f"\n  [{i}/{len(asin_list)}] ASIN: {asin}")
+            print(f"  [{i}/{len(asin_list)}] ASIN: {asin}")
             
             # カタログ情報を取得
             catalog_data = _fetch_catalog_item(access_token, asin)
             
             if catalog_data:
-                # ファイル名を生成
-                filename = f"{GCS_FILE_PREFIX}catalog_item_{asin}_{current_date}.json"
-                
                 # メタデータを追加
-                output_data = {
+                item_data = {
                     "fetchedAt": datetime.now().isoformat(),
                     "marketplaceId": MARKETPLACE_ID,
                     "asin": asin,
                     "catalogData": catalog_data
                 }
-                
-                # JSON形式で保存
-                json_content = json.dumps(output_data, ensure_ascii=False, indent=2)
+                all_catalog_data.append(item_data)
+                success_count += 1
+            else:
+                error_count += 1
+        
+        # まとめてGCSに保存 (NDJSON形式)
+        if all_catalog_data:
+            print(f"\n[3/3] GCSに保存中 ({len(all_catalog_data)}件)...")
+            
+            # ファイル名を生成 (YYYYMMDD.json)
+            blob_name = f"{GCS_FILE_PREFIX}{current_date}.json"
+            
+            # NDJSON形式で保存
+            ndjson_lines = [json.dumps(item, ensure_ascii=False) for item in all_catalog_data]
+            ndjson_content = "\n".join(ndjson_lines)
+            
+            _upload_to_gcs(GCS_BUCKET_NAME, blob_name, ndjson_content)
+        else:
+            print("\n  -> Warn: 保存するデータがありません")
                 
         
         print("\n" + "=" * 60)
