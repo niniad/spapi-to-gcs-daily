@@ -51,15 +51,12 @@ def get_all_month_ranges():
             next_month = current_date.replace(year=year + 1, month=1)
         else:
             next_month = current_date.replace(month=month + 1)
-            
-        # APIリクエスト用の期間（対象月）を計算
-        # Ledger Summaryはズレがないため、そのまま対象月を指定する
-        # 例: 2024-11のデータが欲しい場合、2024-11-01 ~ 2024-12-01 を指定する
-        req_start_date = current_date
-        req_end_date = next_month
         
-        start_date_str = req_start_date.strftime('%Y-%m-%d')
-        end_date_str = req_end_date.strftime('%Y-%m-%d')
+        # end_dateは月の最終日（翌月の初日 - 1日）
+        last_day_of_month = next_month - timedelta(days=1)
+        
+        start_date_str = current_date.strftime('%Y-%m-%d')
+        end_date_str = last_day_of_month.strftime('%Y-%m-%d')
         
         yield (year, month, start_date_str, end_date_str)
         
@@ -86,8 +83,8 @@ def fetch_report(year, month, start_date_str, end_date_str, headers):
     # レポート作成リクエスト
     payload = f'''{{
         "reportType": "GET_LEDGER_SUMMARY_VIEW_DATA",
-        "dataStartTime": "{start_date_str}T00:00:00Z",
-        "dataEndTime": "{end_date_str}T00:00:00Z",
+        "dataStartTime": "{start_date_str}T00:00:00.00+09:00",
+        "dataEndTime": "{end_date_str}T23:59:59.00+09:00",
         "marketplaceIds": ["{MARKETPLACE_ID}"],
         "reportOptions": {{
             "aggregatedByTimePeriod": "MONTHLY"

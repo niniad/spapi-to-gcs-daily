@@ -46,21 +46,21 @@ def _upload_to_gcs(bucket_name, blob_name, content):
 def _get_target_range():
     """
     データ取得対象の期間を計算します。
-    Ledger Summaryレポートは指定した期間のデータがそのまま返されるため、
-    前月のデータを取得するために「先月」の期間を指定します。
     
     Returns:
         tuple: (start_date, end_date) datetime objects
         start_date: 先月の1日 00:00:00
-        end_date: 今月の1日 00:00:00 (先月のデータの終了点として使用)
+        end_date: 先月の最終日 00:00:00
     """
     utc_now = datetime.now(timezone.utc)
     # 今月の1日
     this_month_first = utc_now.replace(day=1)
     # 先月の1日
     last_month_first = (this_month_first - timedelta(days=1)).replace(day=1)
+    # 先月の最終日
+    last_month_last = this_month_first - timedelta(days=1)
     
-    return last_month_first, this_month_first
+    return last_month_first, last_month_last
 
 
 def run():
@@ -93,8 +93,8 @@ def run():
             payload_dict = {
                 "marketplaceIds": [MARKETPLACE_ID],
                 "reportType": "GET_LEDGER_SUMMARY_VIEW_DATA",
-                "dataStartTime": f"{start_date_str}T00:00:00Z",
-                "dataEndTime": f"{end_date_str}T00:00:00Z",
+                "dataStartTime": f"{start_date_str}T00:00:00.00+09:00",
+                "dataEndTime": f"{end_date_str}T23:59:59.00+09:00",
                 "reportOptions": {
                     "aggregatedByTimePeriod": "MONTHLY"
                 }

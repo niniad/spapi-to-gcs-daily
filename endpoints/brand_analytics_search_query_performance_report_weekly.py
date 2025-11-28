@@ -48,6 +48,8 @@ def _get_last_complete_week_range():
     
     Returns:
         tuple: (start_date, end_date) datetime objects
+        start_date: 日曜日
+        end_date: 土曜日
     """
     utc_now = datetime.now(timezone.utc)
     
@@ -62,10 +64,7 @@ def _get_last_complete_week_range():
     end_date = utc_now - timedelta(days=days_since_saturday)
     start_date = end_date - timedelta(days=6)
     
-    # end_dateを翌日の00:00:00にする（土曜日のデータを含めるため）
-    end_date_next_day = end_date + timedelta(days=1)
-    
-    return start_date, end_date_next_day
+    return start_date, end_date
 
 
 def run():
@@ -103,8 +102,8 @@ def run():
         payload_dict = {
             "marketplaceIds": [MARKETPLACE_ID],
             "reportType": "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT",
-            "dataStartTime": f"{start_date_str}T00:00:00Z",
-            "dataEndTime": f"{end_date_str}T00:00:00Z",
+            "dataStartTime": f"{start_date_str}T00:00:00.000Z",
+            "dataEndTime": f"{end_date_str}T00:00:00.000Z",
             "reportOptions": {
                 "reportPeriod": period,
                 "asin": " ".join(asin_list)  # 動的に取得したASINリストを使用
@@ -160,9 +159,7 @@ def run():
                         
                         # ファイル名生成
                         # WEEK: sp-api-brand-analytics-search-query-performance-report-week-yyyymmdd-yyyymmdd.json
-                        # ファイル名は土曜日（end_date - 1日）の日付を使用する
-                        filename_end_date = end_date - timedelta(days=1)
-                        suffix = f"{start_date.strftime('%Y%m%d')}-{filename_end_date.strftime('%Y%m%d')}"
+                        suffix = f"{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}"
                         
                         blob_name = f"{GCS_FILE_PREFIX}{gcs_folder}/{suffix}.json"
                         

@@ -44,20 +44,22 @@ def _upload_to_gcs(bucket_name, blob_name, content):
 
 def _get_previous_month_range():
     """
-    先月の初日と翌月の初日（先月のデータ取得用）を計算します。
+    先月の初日と最終日を計算します。
     
     Returns:
         tuple: (start_date, end_date) datetime objects
         start_date: 先月の1日 00:00:00
-        end_date: 今月の1日 00:00:00 (先月のデータの終了点として使用)
+        end_date: 先月の最終日 00:00:00
     """
     utc_now = datetime.now(timezone.utc)
     # 今月の1日
     this_month_first = utc_now.replace(day=1)
     # 先月の1日
     last_month_first = (this_month_first - timedelta(days=1)).replace(day=1)
+    # 先月の最終日
+    last_month_last = this_month_first - timedelta(days=1)
     
-    return last_month_first, this_month_first
+    return last_month_first, last_month_last
 
 
 def run():
@@ -95,8 +97,8 @@ def run():
         payload_dict = {
             "marketplaceIds": [MARKETPLACE_ID],
             "reportType": "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT",
-            "dataStartTime": f"{start_date_str}T00:00:00Z",
-            "dataEndTime": f"{end_date_str}T00:00:00Z",
+            "dataStartTime": f"{start_date_str}T00:00:00.000Z",
+            "dataEndTime": f"{end_date_str}T00:00:00.000Z",
             "reportOptions": {
                 "reportPeriod": period,
                 "asin": " ".join(asin_list)  # 動的に取得したASINリストを使用

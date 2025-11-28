@@ -49,9 +49,8 @@ def get_week_range(end_date):
         tuple: (start_date, end_date)
     """
     start_date = end_date - timedelta(days=6)
-    # end_dateを翌日の00:00:00にする（土曜日のデータを含めるため）
-    end_date_next_day = end_date + timedelta(days=1)
-    return start_date, end_date_next_day
+    # Postmanに合わせて土曜日の日付をそのまま使う
+    return start_date, end_date
 
 
 def get_all_week_ranges(start_from_date):
@@ -97,8 +96,8 @@ def fetch_report(period, start_date, end_date, headers, max_attempts=20, retry_d
     payload_dict = {
         "marketplaceIds": [MARKETPLACE_ID],
         "reportType": "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT",
-        "dataStartTime": f"{start_date_str}T00:00:00Z",
-        "dataEndTime": f"{end_date_str}T00:00:00Z",
+        "dataStartTime": f"{start_date_str}T00:00:00.000Z",
+        "dataEndTime": f"{end_date_str}T00:00:00.000Z",
         "reportOptions": {
             "reportPeriod": period,
             "asin": " ".join(ASIN_LIST)
@@ -141,6 +140,7 @@ def fetch_report(period, start_date, end_date, headers, max_attempts=20, retry_d
                 break
             elif status in ["FATAL", "CANCELLED"]:
                 print(f"      レポート処理失敗 (Status: {status})")
+                print(f"      Response: {json.dumps(response.json(), indent=2)}")
                 return None, True, False
         
         if not report_document_id:
@@ -162,7 +162,7 @@ def fetch_report(period, start_date, end_date, headers, max_attempts=20, retry_d
         
         if items:
             ndjson_lines = [json.dumps(item, ensure_ascii=False) for item in items]
-            return "\\n".join(ndjson_lines), False, False
+            return "\n".join(ndjson_lines), False, False
         else:
             print(f"      データなし")
             return None, False, False
@@ -184,6 +184,9 @@ def backfill_weekly():
         days_since_saturday = 7
     latest_saturday = utc_now - timedelta(days=days_since_saturday)
     
+    # データ確定待ちのため、さらに1週間遡る
+    latest_saturday -= timedelta(days=7)
+    
     access_token = get_access_token()
     headers = {
         'Content-Type': 'application/json',
@@ -201,9 +204,8 @@ def backfill_weekly():
     max_consecutive_timeouts = 3
     
     for start_date, end_date in get_all_week_ranges(latest_saturday):
-        # ファイル名は土曜日（end_date - 1日）の日付を使用する
-        filename_end_date = end_date - timedelta(days=1)
-        filename = f"{start_date.strftime('%Y%m%d')}-{filename_end_date.strftime('%Y%m%d')}.json"
+        # ファイル名にはAPIに渡す実際のend_dateを使用する
+        filename = f"{start_date.strftime('%Y%m%d')}-{end_date.strftime('%Y%m%d')}.json"
         filepath = week_dir / filename
         
         if filepath.exists():

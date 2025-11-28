@@ -86,8 +86,8 @@ def fetch_report(year, month, start_date_str, end_date_str, headers):
     # Create report request
     payload = f'''{{
         "reportType": "GET_LEDGER_DETAIL_VIEW_DATA",
-        "dataStartTime": "{start_date_str}T00:00:00Z",
-        "dataEndTime": "{end_date_str}T23:59:59Z",
+        "dataStartTime": "{start_date_str}T00:00:00.00+09:00",
+        "dataEndTime": "{end_date_str}T23:59:59.00+09:00",
         "marketplaceIds": ["{MARKETPLACE_ID}"]
     }}'''
     

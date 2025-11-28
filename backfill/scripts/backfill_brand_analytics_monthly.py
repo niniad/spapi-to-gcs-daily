@@ -58,7 +58,10 @@ def get_all_month_ranges(start_from_date):
         else:
             next_month = current_date.replace(month=current_date.month + 1)
         
-        yield (current_date, next_month)
+        # end_dateは月の最終日（翌月の初日 - 1日）
+        last_day_of_month = next_month - timedelta(days=1)
+        
+        yield (current_date, last_day_of_month)
         
         # 前月へ
         current_date = (current_date - timedelta(days=1)).replace(day=1)
@@ -87,8 +90,8 @@ def fetch_report(period, start_date, end_date, headers, max_attempts=20, retry_d
     payload_dict = {
         "marketplaceIds": [MARKETPLACE_ID],
         "reportType": "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT",
-        "dataStartTime": f"{start_date_str}T00:00:00Z",
-        "dataEndTime": f"{end_date_str}T00:00:00Z",
+        "dataStartTime": f"{start_date_str}T00:00:00.000Z",
+        "dataEndTime": f"{end_date_str}T00:00:00.000Z",
         "reportOptions": {
             "reportPeriod": period,
             "asin": " ".join(ASIN_LIST)
@@ -152,7 +155,7 @@ def fetch_report(period, start_date, end_date, headers, max_attempts=20, retry_d
         
         if items:
             ndjson_lines = [json.dumps(item, ensure_ascii=False) for item in items]
-            return "\\n".join(ndjson_lines), False, False
+            return "\n".join(ndjson_lines), False, False
         else:
             print(f"      データなし")
             return None, False, False
