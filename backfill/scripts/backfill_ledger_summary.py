@@ -229,7 +229,7 @@ def backfill():
             print(f"  レート制限回避のため120秒待機します...")
             time.sleep(120)
         else:
-            time.sleep(50)  # 通常時の待機時間を50秒に設定（理論値45秒+バッファ）
+            time.sleep(90)  # 通常時の待機時間を50秒に設定（理論値45秒+バッファ）
     
     print(f"\\nLedger Summary完了: 成功 {success_count}件, スキップ {skip_count}件")
 

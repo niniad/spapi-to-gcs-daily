@@ -228,7 +228,7 @@ def backfill():
             print(f"  Waiting 120s to avoid rate limit...")
             time.sleep(120)
         else:
-            time.sleep(50)  # Standard wait time 50s
+            time.sleep(90)  # Standard wait time 50s
     
     print(f"\\nLedger Detail Completed: Success {success_count}, Skipped {skip_count}")
 
