@@ -119,13 +119,11 @@ def run():
     print("\n=== Orders API (JSONL) 処理開始 ===")
     
     try:
-        # RDT (Restricted Data Token) を取得
-        # buyerInfo, shippingAddress へのアクセス権を含める
-        rdt = get_restricted_data_token(
-            path=ORDERS_API_PATH,
-            method='GET',
-            data_elements=['buyerInfo', 'shippingAddress'] 
-        )
+        # RDT (Restricted Data Token) を取得しようとすると権限エラー(400)になることがあるため
+        # Google Colabでの実績に合わせて、まずは通常のアクセストークンで試行する。
+        # (アプリの設定によっては、通常のトークンでもPIIが返る場合がある、あるいはRDTが不要な場合がある)
+        from utils.sp_api_auth import get_access_token
+        rdt = get_access_token()
         
         # データ取得期間を計算
         utc_now = datetime.now(timezone.utc)
