@@ -11,7 +11,7 @@ Cloud Run Functionsのエントリポイントとして機能します。
 """
 
 import time
-from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, ledger_detail_view_data, ledger_summary_view_data, transactions, fba_inventory, catalog_items
+from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, ledger_detail_view_data, ledger_summary_view_data, transactions, fba_inventory, catalog_items, all_orders_report
 
 
 def main(request):
@@ -99,10 +99,17 @@ def main(request):
                 print("=" * 60)
                 return ("Catalog Items - OK", 200)
             
+            elif endpoint == 'all_orders_report':
+                all_orders_report.run()
+                print("\n" + "=" * 60)
+                print("処理完了: All Orders Report")
+                print("=" * 60)
+                return ("All Orders Report - OK", 200)
+            
             else:
                 error_msg = f"不明なエンドポイント: {endpoint}"
                 print(f"\nError: {error_msg}")
-                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report_weekly, brand_analytics_report_monthly, ledger_detail, ledger_summary, transactions, fba_inventory, catalog_items")
+                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report_weekly, brand_analytics_report_monthly, ledger_detail, ledger_summary, transactions, fba_inventory, catalog_items, all_orders_report")
                 return (error_msg, 400)
         
         else:
@@ -136,8 +143,11 @@ def main(request):
             # 8. Catalog Items
             catalog_items.run()
             
+            # 9. All Orders Report
+            all_orders_report.run()
+            
             # 将来追加予定:
-            # 9. Orders API
+            # 10. Orders API
             # orders_api.run()
             # など...
             
@@ -179,4 +189,7 @@ if __name__ == "__main__":
     # main(MockRequest('ledger_detail'))
 
     # テスト: Ledger Summary Reportのみ
-    main(MockRequest('ledger_summary'))
+    # main(MockRequest('ledger_summary'))
+
+    # テスト: All Orders Reportのみ
+    # main(MockRequest('all_orders_report'))
