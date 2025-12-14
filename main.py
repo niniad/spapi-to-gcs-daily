@@ -11,7 +11,7 @@ Cloud Run Functionsのエントリポイントとして機能します。
 """
 
 import time
-from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, ledger_detail_view_data, ledger_summary_view_data, transactions, fba_inventory, catalog_items, all_orders_report, orders_api
+from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, brand_analytics_repeat_purchase_report_weekly, brand_analytics_repeat_purchase_report_monthly, ledger_detail_view_data, ledger_summary_view_data, transactions, fba_inventory, catalog_items, all_orders_report, orders_api
 
 
 def main(request):
@@ -116,11 +116,25 @@ def main(request):
                 print("処理完了: Orders API (JSONL)")
                 print("=" * 60)
                 return ("Orders API - OK", 200)
+
+            elif endpoint == 'brand_analytics_repeat_purchase_report_weekly':
+                brand_analytics_repeat_purchase_report_weekly.run()
+                print("\n" + "=" * 60)
+                print("処理完了: BA Repeat Purchase (Weekly)")
+                print("=" * 60)
+                return ("BA Repeat Purchase (Weekly) - OK", 200)
+
+            elif endpoint == 'brand_analytics_repeat_purchase_report_monthly':
+                brand_analytics_repeat_purchase_report_monthly.run()
+                print("\n" + "=" * 60)
+                print("処理完了: BA Repeat Purchase (Monthly)")
+                print("=" * 60)
+                return ("BA Repeat Purchase (Monthly) - OK", 200)
             
             else:
                 error_msg = f"不明なエンドポイント: {endpoint}"
                 print(f"\nError: {error_msg}")
-                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report_weekly, brand_analytics_report_monthly, ledger_detail, ledger_summary, transactions, fba_inventory, catalog_items, all_orders_report, orders_api")
+                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report_weekly, brand_analytics_report_monthly, brand_analytics_repeat_purchase_report_weekly, brand_analytics_repeat_purchase_report_monthly, ledger_detail, ledger_summary, transactions, fba_inventory, catalog_items, all_orders_report, orders_api")
                 return (error_msg, 400)
         
         else:
@@ -136,6 +150,10 @@ def main(request):
             # 3. Brand Analytics Search Query Performance Report
             brand_analytics_search_query_performance_report_weekly.run()
             brand_analytics_search_query_performance_report_monthly.run()
+
+            # 3-2. Brand Analytics Repeat Purchase Report
+            brand_analytics_repeat_purchase_report_weekly.run()
+            brand_analytics_repeat_purchase_report_monthly.run()
 
             # 4. Ledger Detail View Data Report
             ledger_detail_view_data.run()
