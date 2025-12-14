@@ -29,8 +29,12 @@ def main(request):
     print("=" * 60)
     
     try:
-        # クエリパラメータから実行するエンドポイントを取得
+        # クエリパラメータまたはJSONボディから実行するエンドポイントを取得
         endpoint = request.args.get('endpoint', None)
+        if not endpoint:
+            request_json = request.get_json(silent=True)
+            if request_json and 'endpoint' in request_json:
+                endpoint = request_json['endpoint']
         
         if endpoint:
             # 特定のエンドポイントのみ実行(テストモード)
