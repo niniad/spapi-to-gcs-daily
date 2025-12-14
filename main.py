@@ -11,7 +11,7 @@ Cloud Run Functionsのエントリポイントとして機能します。
 """
 
 import time
-from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, ledger_detail_view_data, ledger_summary_view_data, transactions, fba_inventory, catalog_items, all_orders_report
+from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, ledger_detail_view_data, ledger_summary_view_data, transactions, fba_inventory, catalog_items, all_orders_report, orders_api
 
 
 def main(request):
@@ -109,11 +109,18 @@ def main(request):
                 print("処理完了: All Orders Report")
                 print("=" * 60)
                 return ("All Orders Report - OK", 200)
+
+            elif endpoint == 'orders_api':
+                orders_api.run()
+                print("\n" + "=" * 60)
+                print("処理完了: Orders API (JSONL)")
+                print("=" * 60)
+                return ("Orders API - OK", 200)
             
             else:
                 error_msg = f"不明なエンドポイント: {endpoint}"
                 print(f"\nError: {error_msg}")
-                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report_weekly, brand_analytics_report_monthly, ledger_detail, ledger_summary, transactions, fba_inventory, catalog_items, all_orders_report")
+                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report_weekly, brand_analytics_report_monthly, ledger_detail, ledger_summary, transactions, fba_inventory, catalog_items, all_orders_report, orders_api")
                 return (error_msg, 400)
         
         else:
@@ -150,9 +157,8 @@ def main(request):
             # 9. All Orders Report
             all_orders_report.run()
             
-            # 将来追加予定:
             # 10. Orders API
-            # orders_api.run()
+            orders_api.run()
             # など...
             
             print("\n" + "=" * 60)

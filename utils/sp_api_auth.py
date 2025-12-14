@@ -61,3 +61,56 @@ def get_access_token():
     except Exception as e:
         print(f"Error: SP-APIアクセストークンの取得中に予期しないエラーが発生しました: {e}")
         raise
+
+
+def get_restricted_data_token(path, method='GET', data_elements=None):
+    """
+    指定されたリソースへのアクセスのためのRestricted Data Token (RDT) を取得します。
+    PII（個人情報）へのアクセスに必要です。
+
+    Args:
+        path (str): アクセスするAPIのパス (例: '/orders/v0/orders')
+        method (str): HTTPメソッド (例: 'GET')
+        data_elements (list): 要求するデータ要素のリスト (例: ['buyerInfo', 'shippingAddress'])
+
+    Returns:
+        str: Restricted Data Token (RDT)
+    """
+    print(f"-> RDT (Restricted Data Token) を取得中... (Path: {path})")
+    
+    # まず通常のアクセストークンを取得
+    access_token = get_access_token()
+    
+    try:
+        # RDT要求のリクエストボディ作成
+        restricted_resources = [
+            {
+                "method": method,
+                "path": path,
+                "dataElements": data_elements if data_elements else []
+            }
+        ]
+        
+        response = requests.post(
+            "https://sellingpartnerapi-fe.amazon.com/tokens/2021-03-01/restrictedDataToken",
+            headers={
+                "Content-Type": "application/json",
+                "x-amz-access-token": access_token
+            },
+            json={
+                "restrictedResources": restricted_resources
+            }
+        )
+        response.raise_for_status()
+        
+        rdt = response.json().get("restrictedDataToken")
+        print("-> RDTの取得に成功しました。")
+        return rdt
+
+    except requests.HTTPError as e:
+        print(f"Error: RDTの取得に失敗しました: {e}")
+        print(f"Response: {e.response.text if e.response else 'No response'}")
+        raise
+    except Exception as e:
+        print(f"Error: RDTの取得中に予期しないエラーが発生しました: {e}")
+        raise
