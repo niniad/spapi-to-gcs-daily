@@ -164,7 +164,7 @@ def backfill_monthly():
     max_consecutive_timeouts = 3
     
     for start_date, end_date in get_all_month_ranges(last_month_end):
-        filename = f"{start_date.strftime('%Y%m')}.json"
+        filename = f"{start_date.strftime('%Y%m')}.jsonl"
         filepath = month_dir / filename
         
         if filepath.exists():
@@ -177,12 +177,29 @@ def backfill_monthly():
         content, is_fatal, is_timeout = fetch_report(start_date, end_date, headers)
         
         if content:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(content)
-            print(f"    ✓ 保存完了")
-            success_count += 1
-            consecutive_errors = 0
-            consecutive_timeouts = 0
+            # JSONL形式に変換
+            try:
+                json_data = json.loads(content)
+                items = json_data.get("dataByAsin", [])
+                
+                if items:
+                    with open(filepath, 'w', encoding='utf-8') as f:
+                        for item in items:
+                            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+                    print(f"    ✓ 保存完了 ({len(items)}件)")
+                    success_count += 1
+                    consecutive_errors = 0
+                    consecutive_timeouts = 0
+                else:
+                    print(f"    - データ(dataByAsin)なし")
+                    # データなしの場合もファイルを作成して再取得をスキップする場合
+                    with open(filepath, 'w', encoding='utf-8') as f:
+                        pass
+                    success_count += 1
+            except json.JSONDecodeError:
+                print(f"    ! Error: JSONパースエラー")
+                # パースエラーはスキップカウントせずリトライ対象にするか...今回はエラーとして扱う
+                consecutive_errors += 1
         else:
             skip_count += 1
             consecutive_errors += 1

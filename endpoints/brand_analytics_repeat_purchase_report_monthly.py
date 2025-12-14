@@ -37,7 +37,7 @@ def _upload_to_gcs(bucket_name, blob_name, content):
         storage_client = storage.Client()
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
-        blob.upload_from_string(content, content_type='application/json')
+        blob.upload_from_string(content, content_type='application/x-ndjson')
         print(f"  -> GCSへの保存成功: gs://{bucket_name}/{blob_name}")
     except Exception as e:
         print(f"  -> Error: GCSへのアップロードに失敗しました: {e}")
@@ -131,10 +131,23 @@ def run():
             content = resp.content.decode('utf-8')
             
         if content:
-            # GCS保存 (ファイル名は年月)
-            filename_suffix = last_month_first.strftime('%Y%m')
-            blob_name = f"{GCS_FILE_PREFIX}{filename_suffix}.json"
-            _upload_to_gcs(GCS_BUCKET_NAME, blob_name, content)
+            # JSONL形式に変換
+            try:
+                json_data = json.loads(content)
+                items = json_data.get("dataByAsin", [])
+                
+                if items:
+                    jsonl_lines = [json.dumps(item, ensure_ascii=False) for item in items]
+                    jsonl_content = "\n".join(jsonl_lines)
+                    
+                    # GCS保存 (ファイル名は年月)
+                    filename_suffix = last_month_first.strftime('%Y%m')
+                    blob_name = f"{GCS_FILE_PREFIX}{filename_suffix}.jsonl"
+                    _upload_to_gcs(GCS_BUCKET_NAME, blob_name, jsonl_content)
+                else:
+                     print("  -> データ(dataByAsin)が含まれていません。")
+            except json.JSONDecodeError:
+                print("  -> Error: JSONのパースに失敗しました。")
         else:
             print("  -> コンテンツが空でした。")
             

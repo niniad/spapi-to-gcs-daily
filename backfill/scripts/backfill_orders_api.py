@@ -74,7 +74,7 @@ def fetch_orders_for_date(date_str, access_token):
             if not next_token:
                 break
             
-            time.sleep(1) # レートリミット考慮
+            time.sleep(2) # レートリミット考慮
             
         except Exception as e:
             print(f"    -> Error: APIリクエスト失敗: {e}")
@@ -139,7 +139,7 @@ def backfill_orders():
             pass
         
         current_date -= timedelta(days=1)
-        time.sleep(1) # レート制限対策
+        time.sleep(2) # レート制限対策
 
     print(f"\nOrders API バックフィル完了: 成功 {success_count}件, スキップ {skip_count}件")
 
