@@ -61,8 +61,7 @@ def fetch_orders_for_date(date_str, access_token):
                 f"{SP_API_ENDPOINT}{ORDERS_API_PATH}",
                 headers=headers,
                 params=params,
-                max_retries=3,
-                retry_delay=2
+                max_retries=3
             )
             
             data = response.json()

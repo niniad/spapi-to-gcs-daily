@@ -124,7 +124,7 @@ def get_all_month_ranges(start_from_date):
 
 
 
-def fetch_report(period, start_date, end_date, headers, asin_list, max_attempts=20, retry_delay=15):
+def fetch_report(period, start_date, end_date, headers, asin_list, max_attempts=20):
     """
     レポートを取得します。ASINリストを分割してリクエストし、結果を統合します。
     
@@ -174,8 +174,7 @@ def fetch_report(period, start_date, end_date, headers, asin_list, max_attempts=
                 f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
                 headers=headers,
                 data=payload,
-                max_retries=5,
-                retry_delay=50
+                max_retries=5
             )
             report_id = response.json()["reportId"]
             
@@ -284,7 +283,7 @@ def backfill_monthly():
         
         print(f"  [取得中] {filename}")
         # 月次はじっくり待つ (60回 x 15秒 = 900秒 = 15分)
-        content, is_fatal, is_timeout = fetch_report("MONTH", start_date, end_date, headers, asin_list, max_attempts=60, retry_delay=15)
+        content, is_fatal, is_timeout = fetch_report("MONTH", start_date, end_date, headers, asin_list, max_attempts=60)
         
         if content:
             with open(filepath, 'w', encoding='utf-8') as f:

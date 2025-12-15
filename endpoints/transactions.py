@@ -87,7 +87,7 @@ def fetch_transactions(posted_after, posted_before, headers):
             headers=headers,
             params=params,
             max_retries=10,
-            retry_delay=60
+            max_retries=10
         )
         
         data = response.json()

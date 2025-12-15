@@ -87,7 +87,7 @@ def fetch_transactions(target_date_jst, headers):
                 headers=headers,
                 params=params,
                 max_retries=5,
-                retry_delay=60
+                max_retries=5
             )
             
             data = response.json()

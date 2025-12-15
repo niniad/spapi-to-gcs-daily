@@ -98,8 +98,7 @@ def fetch_report(year, month, start_date_str, end_date_str, headers):
             f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
             headers=headers,
             data=payload,
-            max_retries=5,
-            retry_delay=50
+            max_retries=5
         )
         report_id = response.json()["reportId"]
         

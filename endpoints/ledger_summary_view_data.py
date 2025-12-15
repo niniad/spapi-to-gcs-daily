@@ -109,7 +109,7 @@ def run():
                 headers=headers,
                 data=payload,
                 max_retries=5,
-                retry_delay=50
+                max_retries=5
             )
             report_id = response.json()["reportId"]
             print(f"    -> レポート作成リクエスト成功 (Report ID: {report_id})")
