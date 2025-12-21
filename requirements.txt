@@ -1,3 +1,5 @@
-requests
-google-cloud-storage
-functions-framework
+requests==2.31.0
+google-cloud-storage==2.14.0
+functions-framework==3.5.0
+urllib3==1.26.18
+certifi==2024.2.2

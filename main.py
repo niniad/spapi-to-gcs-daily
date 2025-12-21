@@ -11,7 +11,7 @@ Cloud Run Functionsのエントリポイントとして機能します。
 """
 
 import time
-from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, brand_analytics_repeat_purchase_report_weekly, brand_analytics_repeat_purchase_report_monthly, ledger_detail_view_data, ledger_summary_view_data, transactions, fba_inventory, catalog_items, all_orders_report, orders_api
+from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, brand_analytics_repeat_purchase_report_weekly, brand_analytics_repeat_purchase_report_monthly, ledger_detail_view_data, ledger_summary_view_data, fba_inventory, catalog_items, all_orders_report
 
 
 def main(request):
@@ -82,12 +82,7 @@ def main(request):
                 print("=" * 60)
                 return ("Ledger Summary Report - OK", 200)
             
-            elif endpoint == 'transactions':
-                transactions.run()
-                print("\n" + "=" * 60)
-                print("処理完了: Transactions")
-                print("=" * 60)
-                return ("Transactions - OK", 200)
+
             
             elif endpoint == 'fba_inventory':
                 fba_inventory.run()
@@ -110,12 +105,7 @@ def main(request):
                 print("=" * 60)
                 return ("All Orders Report - OK", 200)
 
-            elif endpoint == 'orders_api':
-                orders_api.run()
-                print("\n" + "=" * 60)
-                print("処理完了: Orders API (JSONL)")
-                print("=" * 60)
-                return ("Orders API - OK", 200)
+
 
             elif endpoint == 'brand_analytics_repeat_purchase_report_weekly':
                 brand_analytics_repeat_purchase_report_weekly.run()
@@ -163,8 +153,7 @@ def main(request):
             time.sleep(60)
             ledger_summary_view_data.run()
             
-            # 6. Transactions
-            transactions.run()
+
             
             # 7. FBA Inventory
             fba_inventory.run()
@@ -176,7 +165,7 @@ def main(request):
             all_orders_report.run()
             
             # 10. Orders API
-            orders_api.run()
+            # orders_api.run()  <-- Deprecated in favor of all_orders_report
             # など...
             
             print("\n" + "=" * 60)

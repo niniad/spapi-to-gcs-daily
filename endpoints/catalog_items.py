@@ -11,7 +11,7 @@ from datetime import datetime
 from google.cloud import storage
 from utils.sp_api_auth import get_access_token
 from utils.http_retry import request_with_retry
-from endpoints.fba_inventory import get_asin_list
+
 
 
 # ===================================================================
@@ -108,9 +108,42 @@ def run():
         # アクセストークン取得
         access_token = get_access_token()
         
-        # ASIN一覧を取得
-        print("\n[1/3] ASIN一覧を取得中...")
-        asin_list = get_asin_list()
+        # ASIN一覧を取得 (FBA InventoryのGCS保存結果から)
+        print("\n[1/3] ASIN一覧を取得中 (from GCS)...")
+        # get_asin_list() は廃止 (APIコールの重複を防ぐため)
+        # asin_list = get_asin_list() 
+        
+        asin_list = []
+        try:
+            current_date = datetime.now().strftime("%Y%m%d")
+            inventory_filename = f"fba-inventory/{current_date}.json"
+            
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(GCS_BUCKET_NAME)
+            blob = bucket.blob(inventory_filename)
+            
+            if blob.exists():
+                content = blob.download_as_text()
+                # NDJSONをパースしてASINを抽出
+                for line in content.splitlines():
+                    if not line.strip():
+                        continue
+                    data = json.loads(line)
+                    asin = data.get("inventorySummary", {}).get("asin")
+                    if asin:
+                        asin_list.append(asin)
+                
+                # ユニーク化
+                asin_list = sorted(list(set(asin_list)))
+                print(f"  -> GCS Inventory Found: {inventory_filename}")
+            else:
+                print(f"  -> Warn: FBA在庫ファイルが見つかりません: {inventory_filename}")
+                print("  -> FBA Inventory APIが先に実行されているか確認してください。")
+                return
+
+        except Exception as e:
+            print(f"  -> Error: GCSからのASIN一覧取得に失敗: {e}")
+            return
         
         if not asin_list:
             print("  -> Warn: ASIN一覧が空です")
