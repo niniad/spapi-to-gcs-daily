@@ -146,6 +146,7 @@ def fetch_report(period, start_date, end_date, headers, asin_list, max_attempts=
     
     all_ndjson_lines = []
     chunk_size = 10
+    retry_delay = 15
     
     print(f"      ASIN数: {len(asin_list)} (10件ずつ {len(asin_list)//chunk_size + 1}回に分割して取得)")
     

@@ -11,7 +11,7 @@ Cloud Run Functionsのエントリポイントとして機能します。
 """
 
 import time
-from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, brand_analytics_repeat_purchase_report_weekly, brand_analytics_repeat_purchase_report_monthly, ledger_detail_view_data, ledger_summary_view_data, fba_inventory, catalog_items, all_orders_report
+from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, brand_analytics_repeat_purchase_report_weekly, brand_analytics_repeat_purchase_report_monthly, ledger_detail_view_data, ledger_summary_view_data, fba_inventory, catalog_items, all_orders_report, orders_api
 
 
 def main(request):
@@ -165,7 +165,7 @@ def main(request):
             all_orders_report.run()
             
             # 10. Orders API
-            # orders_api.run()  <-- Deprecated in favor of all_orders_report
+            orders_api.run()
             # など...
             
             print("\n" + "=" * 60)
