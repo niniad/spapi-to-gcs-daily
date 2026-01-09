@@ -90,18 +90,16 @@ def run():
         end_date = utc_now - timedelta(days=END_DAYS_AGO)
         print(f"データ取得期間: {start_date.strftime('%Y-%m-%d')} から {end_date.strftime('%Y-%m-%d')}")
         
-        # 日付ごとにループ処理
+        # 1. レポート作成リクエストを一括送信
+        pending_reports = []  # list of triggering info: {'report_id': ..., 'config': ..., 'date': ...}
+        
         current_date = start_date
         while current_date <= end_date:
             date_str = current_date.strftime('%Y-%m-%d')
-            print(f"\n[{date_str}] の処理を開始...")
+            print(f"\n[{date_str}] のレポート作成をリクエスト中...")
             
-            # 各レポート種別を処理
             for config in REPORT_CONFIGS:
-                print(f"  -> レポート種別: [{config['type']}] の処理を開始...")
-                
                 try:
-                    # レポート作成リクエスト
                     payload_dict = {
                         "marketplaceIds": [MARKETPLACE_ID],
                         "reportType": "GET_SALES_AND_TRAFFIC_REPORT",
@@ -119,63 +117,92 @@ def run():
                         data=payload
                     )
                     report_id = response.json()["reportId"]
-                    print(f"    -> レポート作成リクエスト成功 (Report ID: {report_id})")
+                    print(f"  -> [{config['type']}] Request OK (Report ID: {report_id})")
                     
-                    # レポート完了を待機(ポーリング)
-                    get_report_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/reports/{report_id}"
-                    report_document_id = None
+                    pending_reports.append({
+                        "report_id": report_id,
+                        "config": config,
+                        "date_str": date_str,
+                        "current_date": current_date # object for filename generation if needed
+                    })
                     
-                    for attempt in range(15):  # 最大15回試行(約5分)
-                        time.sleep(20)  # 20秒待機
-                        response = request_with_retry(
-                            'GET',
-                            get_report_url,
-                            headers=headers
-                        )
-                        status = response.json().get("processingStatus")
-                        
-                        if status == "DONE":
-                            report_document_id = response.json()["reportDocumentId"]
-                            print(f"    -> レポート作成完了 (DONE)")
-                            break
-                        elif status in ["FATAL", "CANCELLED"]:
-                            print(f"    -> Warn: レポート処理が失敗またはキャンセル (Status: {status})")
-                            break
-                        else:
-                            print(f"    -> レポート作成中 (Status: {status})...")
-                    
-                    if not report_document_id:
-                        print(f"    -> Warn: レポート処理がタイムアウト。スキップします。")
-                        continue
-                    
-                    # レポートドキュメントのダウンロードURL取得
-                    get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
-                    response = request_with_retry('GET', get_doc_url, headers=headers)
-                    download_url = response.json()["url"]
-                    
-                    # レポートをダウンロードして解凍
-                    response = request_with_retry('GET', download_url)
-                    with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
-                        report_content = f.read()
-                    print(f"    -> レポートのダウンロードと解凍が完了。")
-                    
-                    # GCSに保存(内容が空でない場合のみ)
-                    if report_content.strip():
-                        blob_name = f"{config['gcs_file_prefix']}{current_date.strftime('%Y%m%d')}.json"
-                        _upload_to_gcs(config['gcs_bucket_name'], blob_name, report_content)
-                    else:
-                        print("    -> レポート内容が空のためスキップ。")
-                
+                    # Rate Limit対策 (Burst 15, Rate 0.0167/hz)
+                    # 連続して投げすぎると429になる可能性があるため少し待機
+                    time.sleep(2)
+
                 except Exception as e:
-                    print(f"    -> Error: [{config['type']}] の処理中にエラー発生: {e}")
+                    print(f"  -> Error: [{config['type']}] リクエスト失敗: {e}")
+            
+            current_date += timedelta(days=1)
+
+
+        # 2. レポート完了待機とダウンロード
+        print(f"\n--- レポート生成待ち (対象: {len(pending_reports)}件) ---")
+        
+        # 全て完了するまでループ (最大試行回数は全体時間で管理するか、個別に管理するか。ここではシンプルにループ回数でガード)
+        # 合計待機時間が極端に長くならないように注意
+        max_loops = 40 # 30秒 * 40 = 20分 (Cloud Run 60分設定なら余裕)
+        
+        completed_reports = [] # 完了したレポートID
+        
+        for i in range(max_loops):
+            if len(completed_reports) == len(pending_reports):
+                print("全てのレポート処理が完了しました。")
+                break
+                
+            print(f"\nステータス確認 (試行 {i+1}/{max_loops})...")
+            all_done_this_loop = True
+            
+            for item in pending_reports:
+                report_id = item['report_id']
+                if report_id in completed_reports:
                     continue
                 
-                finally:
-                    time.sleep(2)  # 次のリクエストまで少し待機
+                try:
+                    get_report_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/reports/{report_id}"
+                    response = request_with_retry('GET', get_report_url, headers=headers)
+                    status = response.json().get("processingStatus")
+                    
+                    if status == "DONE":
+                        print(f"  -> Report {report_id} ({item['date_str']} {item['config']['type']}): DONE")
+                        
+                        # ダウンロード処理
+                        report_document_id = response.json()["reportDocumentId"]
+                        get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
+                        doc_response = request_with_retry('GET', get_doc_url, headers=headers)
+                        download_url = doc_response.json()["url"]
+                        
+                        dl_response = request_with_retry('GET', download_url)
+                        with gzip.open(io.BytesIO(dl_response.content), 'rt', encoding='utf-8') as f:
+                            report_content = f.read()
+                        
+                        # GCS保存
+                        if report_content.strip():
+                            blob_name = f"{item['config']['gcs_file_prefix']}{item['current_date'].strftime('%Y%m%d')}.json"
+                            _upload_to_gcs(item['config']['gcs_bucket_name'], blob_name, report_content)
+                        else:
+                            print("    -> Warn: 内容が空のため保存スキップ")
+                        
+                        completed_reports.append(report_id)
+                        
+                    elif status in ["FATAL", "CANCELLED"]:
+                        print(f"  -> Report {report_id} ({item['date_str']}): Failed ({status})")
+                        completed_reports.append(report_id) # 失敗扱いとして完了リストに入れる(再試行しない)
+                    else:
+                        # PROCESSING, IN_QUEUE
+                        all_done_this_loop = False
+                        # print(f"  -> Report {report_id}: {status}") # ログ過多になるので省略可
+                
+                except Exception as e:
+                    print(f"  -> Error: Report {report_id} 処理中にエラー: {e}")
+                    # エラーでも一時的なAPIエラーならリトライしたいが、ここではログ出して次へ
             
-            # 次の日付へ
-            current_date += timedelta(days=1)
-        
+            if len(completed_reports) == len(pending_reports):
+                break
+                
+            if not all_done_this_loop:
+                time.sleep(30) # 30秒待機
+
         print("\n=== Sales and Traffic Report 処理完了 ===")
         
     except Exception as e:

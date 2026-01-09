@@ -74,11 +74,13 @@ def run():
         end_date = utc_now - timedelta(days=END_DAYS_AGO)
         print(f"データ取得期間: {start_date.strftime('%Y-%m-%d')} から {end_date.strftime('%Y-%m-%d')}")
         
-        # 日付ごとにループ処理
+        # 1. レポート作成リクエストを一括送信
+        pending_reports = []
+        
         current_date = start_date
         while current_date <= end_date:
             date_str = current_date.strftime('%Y-%m-%d')
-            print(f"\n[{date_str}] の処理を開始...")
+            print(f"\n[{date_str}] のレポート作成をリクエスト中...")
             
             try:
                 # レポート作成リクエスト
@@ -97,84 +99,95 @@ def run():
                     data=payload
                 )
                 report_id = response.json()["reportId"]
-                print(f"  -> レポート作成リクエスト成功 (Report ID: {report_id})")
+                print(f"  -> Request OK (Report ID: {report_id})")
                 
-                # レポート完了を待機(ポーリング)
-                get_report_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/reports/{report_id}"
-                report_document_id = None
+                pending_reports.append({
+                    "report_id": report_id,
+                    "date_str": date_str,
+                    "current_date": current_date
+                })
                 
-                for attempt in range(20):  # 最大20回試行(約6-7分)
-                    time.sleep(20)  # 20秒待機
-                    response = request_with_retry(
-                        'GET',
-                        get_report_url,
-                        headers=headers
-                    )
+                # Rate Limit対策 (Burst 15)
+                time.sleep(2)
+                
+            except Exception as e:
+                print(f"  -> Error: [{date_str}] リクエスト失敗: {e}")
+
+            current_date += timedelta(days=1)
+
+        # 2. レポート完了待機とダウンロード
+        print(f"\n--- レポート生成待ち (対象: {len(pending_reports)}件) ---")
+        
+        max_loops = 40 # 30s * 40 = 20 mins
+        completed_reports = []
+        
+        for i in range(max_loops):
+            if len(completed_reports) == len(pending_reports):
+                print("全てのレポート処理が完了しました。")
+                break
+                
+            print(f"\nステータス確認 (試行 {i+1}/{max_loops})...")
+            all_done_this_loop = True
+            
+            for item in pending_reports:
+                report_id = item['report_id']
+                if report_id in completed_reports:
+                    continue
+                
+                try:
+                    get_report_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/reports/{report_id}"
+                    response = request_with_retry('GET', get_report_url, headers=headers)
                     status = response.json().get("processingStatus")
                     
                     if status == "DONE":
+                        print(f"  -> Report {report_id} ({item['date_str']}): DONE")
                         report_document_id = response.json()["reportDocumentId"]
-                        print(f"  -> レポート作成完了 (DONE)")
-                        break
-                    elif status in ["FATAL", "CANCELLED"]:
-                        print(f"  -> Warn: レポート処理が失敗またはキャンセル (Status: {status})")
-                        break
-                    else:
-                        print(f"  -> レポート作成中 (Status: {status})...")
-                
-                if not report_document_id:
-                    print(f"  -> Warn: レポート処理がタイムアウトしました。スキップします。")
-                    current_date += timedelta(days=1)
-                    continue
-                
-                # レポートドキュメントのダウンロードURL取得
-                get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
-                response = request_with_retry('GET', get_doc_url, headers=headers)
-                download_url = response.json()["url"]
-                
-                # レポートをダウンロードして解凍 (Orders Reportは通常Content-Encodingなしのテキストだが、念のため圧縮対応)
-                response = request_with_retry('GET', download_url)
-                
-                content_to_save = None
-                
-                # 圧縮されているかチェック（ヘッダー等はAPI仕様によるが、バイナリ判定等で簡易チェックあるいはtry-except）
-                # SP-APIのレポートは明示しない限り平文の場合が多いが、gzipで来ることもある。
-                try:
-                    with gzip.open(io.BytesIO(response.content), 'rt', encoding='utf-8') as f:
-                        content_to_save = f.read()
-                    print(f"  -> GZIP解凍完了")
-                except gzip.BadGzipFile:
-                    # Gzipでない場合はそのままデコード (CP932/Shift-JISの可能性もあるが、SP-API V2系は通常UTF-8)
-                    # 日本のレポートはShift_JIS(CP932)で返る場合があるため、decodeを試みる
-                    try:
-                        content_to_save = response.content.decode('utf-8')
-                    except UnicodeDecodeError:
+                        
+                        # ダウンロード処理
+                        get_doc_url = f"{SP_API_ENDPOINT}/reports/2021-06-30/documents/{report_document_id}"
+                        doc_response = request_with_retry('GET', get_doc_url, headers=headers)
+                        download_url = doc_response.json()["url"]
+                        
+                        dl_response = request_with_retry('GET', download_url)
+                        
+                        content_to_save = None
                         try:
-                            content_to_save = response.content.decode('cp932')
-                            print("  -> Shift_JIS(cp932)でデコードしました")
-                        except UnicodeDecodeError:
-                             print("  -> Warn: デコードに失敗しました。Latin-1で試行します。")
-                             content_to_save = response.content.decode('latin-1')
+                            with gzip.open(io.BytesIO(dl_response.content), 'rt', encoding='utf-8') as f:
+                                content_to_save = f.read()
+                            print(f"    -> GZIP解凍完了")
+                        except gzip.BadGzipFile:
+                            try:
+                                content_to_save = dl_response.content.decode('utf-8')
+                            except UnicodeDecodeError:
+                                try:
+                                    content_to_save = dl_response.content.decode('cp932')
+                                    print("    -> Shift_JIS(cp932)でデコードしました")
+                                except UnicodeDecodeError:
+                                    content_to_save = dl_response.content.decode('latin-1')
 
-                print(f"  -> ダウンロード完了。")
+                        # GCS保存
+                        if content_to_save and content_to_save.strip():
+                            blob_name = f"{GCS_FILE_PREFIX}{item['current_date'].strftime('%Y%m%d')}.tsv"
+                            _upload_to_gcs(GCS_BUCKET_NAME, blob_name, content_to_save)
+                        else:
+                            print("    -> Warn: 内容が空のため保存スキップ")
+                            
+                        completed_reports.append(report_id)
+                        
+                    elif status in ["FATAL", "CANCELLED"]:
+                        print(f"  -> Report {report_id}: Failed ({status})")
+                        completed_reports.append(report_id)
+                    else:
+                        all_done_this_loop = False
                 
-                # GCSに保存(内容が空でない場合のみ)
-                if content_to_save and content_to_save.strip():
-                    # ファイル名は YYYYMMDD.tsv とする
-                    blob_name = f"{GCS_FILE_PREFIX}{current_date.strftime('%Y%m%d')}.tsv"
-                    _upload_to_gcs(GCS_BUCKET_NAME, blob_name, content_to_save)
-                else:
-                    print("  -> レポート内容が空のためスキップ。")
+                except Exception as e:
+                    print(f"  -> Error: Report {report_id} 処理中にエラー: {e}")
             
-            except Exception as e:
-                print(f"  -> Error: [{date_str}] の処理中にエラー発生: {e}")
-                # 個別の日付のエラーはログに出して続行
+            if len(completed_reports) == len(pending_reports):
+                break
             
-            finally:
-                time.sleep(2)  # 次のリクエストまで少し待機
-            
-            # 次の日付へ
-            current_date += timedelta(days=1)
+            if not all_done_this_loop:
+                time.sleep(30)
         
         print("\n=== All Orders Report 処理完了 ===")
         
