@@ -103,7 +103,6 @@ def run():
                 f"{SP_API_ENDPOINT}/reports/2021-06-30/reports",
                 headers=headers,
                 data=payload,
-                max_retries=5,
                 max_retries=5
             )
             report_id = response.json()["reportId"]
