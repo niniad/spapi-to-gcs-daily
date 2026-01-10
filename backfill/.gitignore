@@ -1,7 +1,0 @@
-# Backfill directory gitignore
-
-# 認証情報（重要: Gitにコミットしない）
-credentials.json
-
-# 取得したデータファイル
-data/

@@ -1,212 +1,132 @@
 """
 SP-API Data Acquisition Orchestrator
 
-このファイルは、複数のSP-APIエンドポイントを順次実行するオーケストレーターです。
-Cloud Run Functionsのエントリポイントとして機能します。
+This file acts as an orchestrator to run multiple SP-API endpoint tasks.
+It can run all tasks in parallel (production mode) or a single task (test mode).
 
-テスト実行:
-- 全エンドポイント実行: https://your-cloud-run-url
-- 特定エンドポイントのみ: https://your-cloud-run-url?endpoint=sales_and_traffic
-- 特定エンドポイントのみ: https://your-cloud-run-url?endpoint=settlement_report
+Execution (Cloud Run):
+- All endpoints: https://your-cloud-run-url
+- Specific endpoint: https://your-cloud-run-url?endpoint=sales_and_traffic
 """
 
-import time
-from endpoints import sales_and_traffic_report, settlement_report, brand_analytics_search_query_performance_report_weekly, brand_analytics_search_query_performance_report_monthly, brand_analytics_repeat_purchase_report_weekly, brand_analytics_repeat_purchase_report_monthly, ledger_detail_view_data, ledger_summary_view_data, fba_inventory, catalog_items, all_orders_report, orders_api
+import logging
+import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from endpoints import (
+    sales_and_traffic_report, 
+    settlement_report, 
+    brand_analytics_search_query_performance_report_weekly, 
+    brand_analytics_search_query_performance_report_monthly, 
+    brand_analytics_repeat_purchase_report_weekly, 
+    brand_analytics_repeat_purchase_report_monthly, 
+    ledger_detail_view_data, 
+    ledger_summary_view_data, 
+    fba_inventory, 
+    catalog_items, 
+    all_orders_report, 
+    orders_api
+)
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Endpoint Mapping ---
+# Maps a string name to the corresponding module and run function
+ENDPOINT_MAP = {
+    "fba_inventory": fba_inventory,
+    "catalog_items": catalog_items,
+    "sales_and_traffic": sales_and_traffic_report,
+    "settlement_report": settlement_report,
+    "brand_analytics_search_query_weekly": brand_analytics_search_query_performance_report_weekly,
+    "brand_analytics_search_query_monthly": brand_analytics_search_query_performance_report_monthly,
+    "brand_analytics_repeat_purchase_weekly": brand_analytics_repeat_purchase_report_weekly,
+    "brand_analytics_repeat_purchase_monthly": brand_analytics_repeat_purchase_report_monthly,
+    "ledger_detail": ledger_detail_view_data,
+    "ledger_summary": ledger_summary_view_data,
+    "all_orders_report": all_orders_report,
+    "orders_api": orders_api,
+}
+
+def run_task(endpoint_name, module):
+    """Wrapper to run a task and handle its outcome."""
+    try:
+        logging.info(f"Starting task: {endpoint_name}")
+        module.run()
+        logging.info(f"Finished task: {endpoint_name}")
+        return endpoint_name, "SUCCESS"
+    except Exception as e:
+        logging.error(f"Task failed: {endpoint_name}", exc_info=True)
+        return endpoint_name, f"FAILED: {e}"
 
 def main(request):
     """
-    Cloud Run Functionsのメインエントリポイント
-    
+    Main entry point for the Cloud Function.
     Args:
         request: Flask request object
-        
     Returns:
         tuple: (message, status_code)
     """
-    print("=" * 60)
-    print("SP-API Data Acquisition - 処理開始")
-    print("=" * 60)
+    logging.info("SP-API Data Acquisition - Processing started")
     
     try:
-        # クエリパラメータまたはJSONボディから実行するエンドポイントを取得
-        endpoint = request.args.get('endpoint', None)
-        if not endpoint:
-            request_json = request.get_json(silent=True)
-            if request_json and 'endpoint' in request_json:
-                endpoint = request_json['endpoint']
-        
-        if endpoint:
-            # 特定のエンドポイントのみ実行(テストモード)
-            print(f"\n[テストモード] エンドポイント指定: {endpoint}")
-            
-            if endpoint == 'sales_and_traffic':
-                sales_and_traffic_report.run()
-                print("\n" + "=" * 60)
-                print("処理完了: Sales and Traffic Report")
-                print("=" * 60)
-                return ("Sales and Traffic Report - OK", 200)
-            
-            elif endpoint == 'settlement_report':
-                settlement_report.run()
-                print("\n" + "=" * 60)
-                print("処理完了: Settlement Report")
-                print("=" * 60)
-                return ("Settlement Report - OK", 200)
-            
-            elif endpoint == 'brand_analytics_report_weekly':
-                brand_analytics_search_query_performance_report_weekly.run()
-                print("\n" + "=" * 60)
-                print("処理完了: Brand Analytics Search Query Performance Report (WEEK)")
-                print("=" * 60)
-                return ("Brand Analytics Report (WEEK) - OK", 200)
+        endpoint_param = request.args.get('endpoint')
+        request_json = request.get_json(silent=True)
+        if not endpoint_param and request_json and 'endpoint' in request_json:
+            endpoint_param = request_json['endpoint']
 
-            elif endpoint == 'brand_analytics_report_monthly':
-                brand_analytics_search_query_performance_report_monthly.run()
-                print("\n" + "=" * 60)
-                print("処理完了: Brand Analytics Search Query Performance Report (MONTH)")
-                print("=" * 60)
-                return ("Brand Analytics Report (MONTH) - OK", 200)
-            
-            elif endpoint == 'ledger_detail':
-                ledger_detail_view_data.run()
-                print("\n" + "=" * 60)
-                print("処理完了: Ledger Detail View Data Report")
-                print("=" * 60)
-                return ("Ledger Detail Report - OK", 200)
-
-            elif endpoint == 'ledger_summary':
-                ledger_summary_view_data.run()
-                print("\n" + "=" * 60)
-                print("処理完了: Ledger Summary View Data Report")
-                print("=" * 60)
-                return ("Ledger Summary Report - OK", 200)
-            
-
-            
-            elif endpoint == 'fba_inventory':
-                fba_inventory.run()
-                print("\n" + "=" * 60)
-                print("処理完了: FBA Inventory")
-                print("=" * 60)
-                return ("FBA Inventory - OK", 200)
-            
-            elif endpoint == 'catalog_items':
-                catalog_items.run()
-                print("\n" + "=" * 60)
-                print("処理完了: Catalog Items")
-                print("=" * 60)
-                return ("Catalog Items - OK", 200)
-            
-            elif endpoint == 'all_orders_report':
-                all_orders_report.run()
-                print("\n" + "=" * 60)
-                print("処理完了: All Orders Report")
-                print("=" * 60)
-                return ("All Orders Report - OK", 200)
-
-
-
-            elif endpoint == 'brand_analytics_repeat_purchase_report_weekly':
-                brand_analytics_repeat_purchase_report_weekly.run()
-                print("\n" + "=" * 60)
-                print("処理完了: BA Repeat Purchase (Weekly)")
-                print("=" * 60)
-                return ("BA Repeat Purchase (Weekly) - OK", 200)
-
-            elif endpoint == 'brand_analytics_repeat_purchase_report_monthly':
-                brand_analytics_repeat_purchase_report_monthly.run()
-                print("\n" + "=" * 60)
-                print("処理完了: BA Repeat Purchase (Monthly)")
-                print("=" * 60)
-                return ("BA Repeat Purchase (Monthly) - OK", 200)
-            
+        # --- Test Mode: Run a single endpoint ---
+        if endpoint_param:
+            if endpoint_param in ENDPOINT_MAP:
+                logging.info(f"[Test Mode] Running single endpoint: {endpoint_param}")
+                name, result = run_task(endpoint_param, ENDPOINT_MAP[endpoint_param])
+                if "SUCCESS" in result:
+                    return f"{name} - OK", 200
+                else:
+                    return f"{name} - {result}", 500
             else:
-                error_msg = f"不明なエンドポイント: {endpoint}"
-                print(f"\nError: {error_msg}")
-                print("利用可能なエンドポイント: sales_and_traffic, settlement_report, brand_analytics_report_weekly, brand_analytics_report_monthly, brand_analytics_repeat_purchase_report_weekly, brand_analytics_repeat_purchase_report_monthly, ledger_detail, ledger_summary, transactions, fba_inventory, catalog_items, all_orders_report, orders_api")
-                return (error_msg, 400)
-        
+                logging.error(f"Unknown endpoint: {endpoint_param}")
+                return f"Unknown endpoint: {endpoint_param}", 400
+
+        # --- Production Mode: Run all endpoints ---
         else:
-            # 全エンドポイントを順次実行(本番モード)
-            print("\n[本番モード] 全エンドポイントを順次実行")
+            logging.info("[Production Mode] Running all endpoints.")
             
-            # 1. Sales and Traffic Report
-            sales_and_traffic_report.run()
-            
-            # 2. Settlement Report
-            settlement_report.run()
+            # Step 1: Run fba_inventory first due to dependencies.
+            logging.info("Executing prerequisite task: fba_inventory")
+            name, result = run_task("fba_inventory", fba_inventory)
+            if "FAILED" in result:
+                # If the prerequisite fails, we might not want to continue.
+                logging.critical("Prerequisite task fba_inventory failed. Aborting parallel execution.")
+                return "Prerequisite fba_inventory failed", 500
 
-            # 3. Brand Analytics Search Query Performance Report
-            brand_analytics_search_query_performance_report_weekly.run()
-            brand_analytics_search_query_performance_report_monthly.run()
+            # Step 2: Run all other tasks in parallel.
+            tasks_to_run_in_parallel = {k: v for k, v in ENDPOINT_MAP.items() if k != "fba_inventory"}
+            results = {}
 
-            # 3-2. Brand Analytics Repeat Purchase Report
-            brand_analytics_repeat_purchase_report_weekly.run()
-            brand_analytics_repeat_purchase_report_monthly.run()
+            with ThreadPoolExecutor(max_workers=len(tasks_to_run_in_parallel)) as executor:
+                logging.info(f"Submitting {len(tasks_to_run_in_parallel)} tasks to ThreadPoolExecutor.")
+                future_to_endpoint = {executor.submit(run_task, name, module): name for name, module in tasks_to_run_in_parallel.items()}
+                
+                for future in as_completed(future_to_endpoint):
+                    endpoint_name = future_to_endpoint[future]
+                    try:
+                        name, res = future.result()
+                        results[name] = res
+                        logging.info(f"Result for {name}: {res}")
+                    except Exception as e:
+                        logging.error(f"Future for {endpoint_name} generated an exception: {e}", exc_info=True)
+                        results[endpoint_name] = f"FAILED in future: {e}"
 
-            # 4. Ledger Detail View Data Report
-            ledger_detail_view_data.run()
+            logging.info("--- All tasks completed ---")
+            failed_tasks = {k: v for k, v in results.items() if "FAILED" in v}
 
-            # 5. Ledger Summary View Data Report
-            print("  -> クールダウン: 60秒待機中...")
-            time.sleep(60)
-            ledger_summary_view_data.run()
-            
+            if failed_tasks:
+                logging.error(f"Some tasks failed: {failed_tasks}")
+                return f"Run finished with failures: {failed_tasks}", 500
+            else:
+                logging.info("All endpoints processed successfully.")
+                return "All endpoints - OK", 200
 
-            
-            # 7. FBA Inventory
-            fba_inventory.run()
-            
-            # 8. Catalog Items
-            catalog_items.run()
-            
-            # 9. All Orders Report
-            all_orders_report.run()
-            
-            # 10. Orders API
-            orders_api.run()
-            # など...
-            
-            print("\n" + "=" * 60)
-            print("全エンドポイント処理完了")
-            print("=" * 60)
-            return ("All endpoints - OK", 200)
-    
-    except Exception as e:
-        error_msg = f"致命的なエラーが発生しました: {e}"
-        print(f"\nError: {error_msg}")
-        import traceback
-        traceback.print_exc()
-        return ("Internal Server Error", 500)
-
-
-if __name__ == "__main__":
-    # ローカルテスト用
-    # functions-framework --target=main --signature-type=http --debug
-    print("ローカルテスト実行")
-    
-    class MockRequest:
-        def __init__(self, endpoint=None):
-            self.args = {'endpoint': endpoint} if endpoint else {}
-    
-    # テスト: 全エンドポイント実行
-    # main(MockRequest())
-    
-    # テスト: Sales and Traffic Reportのみ
-    # main(MockRequest('sales_and_traffic'))
-    
-    # テスト: Settlement Reportのみ
-    # main(MockRequest('settlement_report'))
-
-    # テスト: Brand Analytics Reportのみ
-    # main(MockRequest('brand_analytics_report'))
-
-    # テスト: Ledger Detail Reportのみ
-    # main(MockRequest('ledger_detail'))
-
-    # テスト: Ledger Summary Reportのみ
-    # main(MockRequest('ledger_summary'))
-
-    # テスト: All Orders Reportのみ
-    # main(MockRequest('all_orders_report'))
+    except Exception:
+        logging.critical("A fatal error occurred in the main orchestrator.", exc_info=True)
+        return "Internal Server Error", 500

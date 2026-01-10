@@ -1,21 +1,23 @@
 """
 FBA Inventory Module
 
-このモジュールは、SP-APIのFBA Inventory APIを使用して在庫情報を取得し、GCSに保存します。
-取得した在庫情報から、ASINリストを抽出して他のエンドポイントで使用できるようにします。
+This module uses the SP-API's FBA Inventory API to retrieve inventory information and saves it to GCS.
+It also extracts a list of ASINs from the inventory information for use by other endpoints.
 """
 
 import json
+import logging
 from datetime import datetime
 from google.cloud import storage
 from utils.sp_api_auth import get_access_token
 from utils.http_retry import request_with_retry
 
+# ===================================================================
+# Configuration
+# ===================================================================
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# ===================================================================
-# 設定
-# ===================================================================
-MARKETPLACE_ID = "A1VC38T7YXB528"  # 日本
+MARKETPLACE_ID = "A1VC38T7YXB528"  # Japan
 SP_API_ENDPOINT = "https://sellingpartnerapi-fe.amazon.com"
 GCS_BUCKET_NAME = "sp-api-bucket"
 GCS_FILE_PREFIX = "fba-inventory/"
@@ -23,48 +25,45 @@ GCS_FILE_PREFIX = "fba-inventory/"
 
 def _upload_to_gcs(bucket_name, blob_name, content):
     """
-    GCSにファイルをアップロードします。
+    Uploads a file to GCS.
     
     Args:
-        bucket_name: GCSバケット名
-        blob_name: 保存するファイル名
-        content: ファイルの内容（JSON文字列）
+        bucket_name: GCS bucket name.
+        blob_name: The name of the file to save.
+        content: The content of the file (JSON string).
     """
     try:
         storage_client = storage.Client()
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
-        blob.upload_from_string(content, content_type='application/json')
-        print(f"  -> GCSへの保存成功: gs://{bucket_name}/{blob_name}")
-    except Exception as e:
-        print(f"  -> Error: GCSへのアップロードに失敗しました: {e}")
-
+        blob.upload_from_string(content, content_type='application/jsonl')
+        logging.info(f"Successfully saved to GCS: gs://{bucket_name}/{blob_name}")
+    except Exception:
+        logging.error(f"Failed to upload to GCS: gs://{bucket_name}/{blob_name}", exc_info=True)
 
 def _fetch_inventory_summaries(access_token, next_token=None):
     """
-    FBA Inventory APIから在庫サマリーを取得します。
+    Fetches inventory summaries from the FBA Inventory API.
     
     Args:
-        access_token: SP-APIアクセストークン
-        next_token: ページネーション用のトークン（オプション）
+        access_token: SP-API access token.
+        next_token: Token for pagination (optional).
         
     Returns:
-        dict: APIレスポンス
+        dict: API response.
     """
     url = f"{SP_API_ENDPOINT}/fba/inventory/v1/summaries"
-    
     headers = {
         "x-amz-access-token": access_token,
         "Content-Type": "application/json",
         "Accept": "application/json"
     }
-    
     params = {
         "marketplaceIds": MARKETPLACE_ID,
         "granularityType": "Marketplace",
-        "granularityId": MARKETPLACE_ID
+        "granularityId": MARKETPLACE_ID,
+        "details": "true" # Include details
     }
-    
     if next_token:
         params["nextToken"] = next_token
     
@@ -74,107 +73,86 @@ def _fetch_inventory_summaries(access_token, next_token=None):
         return response.json()
     else:
         error_msg = f"FBA Inventory API Error: {response.status_code} - {response.text}"
-        print(f"  -> Error: {error_msg}")
+        logging.error(error_msg)
         raise Exception(error_msg)
-
 
 def _get_all_inventory_summaries(access_token):
     """
-    全ての在庫サマリーを取得します（ページネーション対応）。
+    Retrieves all inventory summaries (handles pagination).
     
     Args:
-        access_token: SP-APIアクセストークン
+        access_token: SP-API access token.
         
     Returns:
-        list: 全在庫サマリーのリスト
+        list: A list of all inventory summaries.
     """
     all_summaries = []
     next_token = None
     page = 1
     
-    print("  -> FBA在庫情報を取得中...")
+    logging.info("Fetching FBA inventory information...")
     
     while True:
-        print(f"    ページ {page} を取得中...")
+        logging.info(f"Fetching page {page}...")
         response_data = _fetch_inventory_summaries(access_token, next_token)
         
         # Handle payload wrapper if present
-        if "payload" in response_data:
-            summaries = response_data["payload"].get("inventorySummaries", [])
-        else:
-            summaries = response_data.get("inventorySummaries", [])
+        payload = response_data.get("payload", response_data)
+        summaries = payload.get("inventorySummaries", [])
             
         all_summaries.extend(summaries)
+        logging.info(f"Fetched {len(summaries)} inventory items.")
         
-        print(f"    {len(summaries)} 件の在庫情報を取得")
-        
-        # 次のページがあるかチェック
         pagination = response_data.get("pagination", {})
         next_token = pagination.get("nextToken")
         
         if not next_token:
             break
-            
         page += 1
     
-    print(f"  -> 合計 {len(all_summaries)} 件の在庫情報を取得完了")
+    logging.info(f"Finished fetching all inventory. Total items: {len(all_summaries)}")
     return all_summaries
-
 
 def get_asin_list():
     """
-    FBA在庫からASINリストを取得します。
+    Retrieves a list of ASINs from FBA inventory.
     
     Returns:
-        list: ASINのリスト
+        list: A list of ASINs.
     """
     try:
         access_token = get_access_token()
         summaries = _get_all_inventory_summaries(access_token)
         
-        # ASINを抽出（重複を除く）
-        asin_set = set()
-        for summary in summaries:
-            asin = summary.get("asin")
-            if asin:
-                asin_set.add(asin)
-        
+        asin_set = {summary['asin'] for summary in summaries if 'asin' in summary}
         asin_list = sorted(list(asin_set))
-        print(f"  -> 抽出されたASIN数: {len(asin_list)}")
         
+        logging.info(f"Extracted {len(asin_list)} unique ASINs.")
         return asin_list
         
-    except Exception as e:
-        print(f"  -> Error: ASIN一覧の取得に失敗しました: {e}")
+    except Exception:
+        logging.error("Failed to get ASIN list.", exc_info=True)
         raise
 
 def run():
     """
-    FBA在庫情報を取得してGCSに保存します。
+    Fetches FBA inventory information and saves it to GCS.
     """
-    print("\n" + "=" * 60)
-    print("FBA Inventory - 処理開始")
-    print("=" * 60)
+    logging.info("FBA Inventory - Processing started")
     
     try:
-        # アクセストークン取得
         access_token = get_access_token()
-        
-        # 全在庫情報を取得
         summaries = _get_all_inventory_summaries(access_token)
         
         if not summaries:
-            print("  -> Warn: 在庫情報が見つかりませんでした")
+            logging.warning("No inventory information found.")
             return
         
-        # 現在日時でファイル名を生成 (YYYYMMDD.json)
         current_date = datetime.now().strftime("%Y%m%d")
-        filename = f"{GCS_FILE_PREFIX}{current_date}.json"
+        filename = f"{GCS_FILE_PREFIX}{current_date}.jsonl"
         
-        # NDJSON形式で保存
         ndjson_lines = []
         for summary in summaries:
-            # メタデータを追加
             item_data = {
                 "fetchedAt": datetime.now().isoformat(),
                 "marketplaceId": MARKETPLACE_ID,
@@ -184,25 +162,17 @@ def run():
             
         ndjson_content = "\n".join(ndjson_lines)
         
-        # GCSにアップロード
         _upload_to_gcs(GCS_BUCKET_NAME, filename, ndjson_content)
         
-        # ASIN一覧を表示
-        asin_list = [s.get("asin") for s in summaries if s.get("asin")]
-        unique_asins = sorted(set(asin_list))
-        print(f"\n  -> ユニークASIN数: {len(unique_asins)}")
-        print(f"  -> ASIN一覧: {', '.join(unique_asins[:10])}{'...' if len(unique_asins) > 10 else ''}")
+        unique_asins = sorted({s.get("asin") for s in summaries if s.get("asin")})
+        logging.info(f"Unique ASINs count: {len(unique_asins)}")
+        logging.info(f"ASIN list: {', '.join(unique_asins[:10])}{'...' if len(unique_asins) > 10 else ''}")
         
-        print("\n" + "=" * 60)
-        print("FBA Inventory - 処理完了")
-        print("=" * 60)
+        logging.info("FBA Inventory - Processing finished")
         
-    except Exception as e:
-        print(f"\n  -> Error: FBA Inventory処理中にエラーが発生しました: {e}")
-        import traceback
-        traceback.print_exc()
+    except Exception:
+        logging.error("An error occurred during FBA Inventory processing.", exc_info=True)
         raise
-
 
 if __name__ == "__main__":
     run()

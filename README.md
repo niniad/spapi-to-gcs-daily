@@ -1,68 +1,82 @@
-# SP-API to GCS Daily
+# SP-API to Google Cloud Storage Daily
 
-SP-APIから各種レポートを取得し、Google Cloud Storage (GCS) に保存するCloud Run Functionsです。
+This project serves as a Cloud Run service to fetch data from various Amazon Selling Partner API (SP-API) endpoints and upload it to Google Cloud Storage (GCS).
 
-## 手動実行 / テスト方法
+The service can run in two modes:
+1.  **Production Mode**: Fetches data from all configured SP-API endpoints sequentially and in parallel.
+2.  **Test Mode**: Fetches data from a single, specified SP-API endpoint.
 
-Google Cloud Shell（または `gcloud` コマンドが設定されたターミナル）から以下のコマンドを実行することで、各エンドポイントを手動でトリガーできます。
+## Project Structure
 
-### 1. 全エンドポイントの実行（デフォルト）
-すべてのレポート取得処理を順次実行します。
-
-```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app" \
--H "Authorization: bearer $(gcloud auth print-identity-token)"
+```
+.
+├── .idx/
+│   └── dev.nix         # Nix configuration for the development environment
+├── endpoints/
+│   ├── __init__.py
+│   ├── fba_inventory.py
+│   ├── orders_api.py
+│   └── ...             # Each file corresponds to one SP-API endpoint
+├── utils/
+│   ├── __init__.py
+│   ├── auth.py         # Handles authentication with SP-API & GCP
+│   └── ...
+├── main.py             # Main entry point for the Cloud Run service
+├── README.md           # This file
+└── requirements.txt    # Python package dependencies
 ```
 
-### 2. Sales and Traffic Report のみ実行
-Sales and Traffic Report の処理のみを実行します。
+## Environment Setup (IDX)
 
-```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=sales_and_traffic" \
--H "Authorization: bearer $(gcloud auth print-identity-token)"
-```
+This project is configured to work seamlessly with Google's IDX IDE.
 
-### 3. Settlement Report のみ実行
-Settlement Report の処理のみを実行します。
+1.  **GCP Secret Manager**:
+    Ensure the following secrets are stored in your GCP project's Secret Manager:
+    *   `SP_API_CLIENT_ID`: Your SP-API Client ID.
+    *   `SP_API_CLIENT_SECRET`: Your SP-API Client Secret.
+    *   `SP_API_REFRESH_TOKEN`: Your SP-API Refresh Token.
 
-```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=settlement_report" \
--H "Authorization: bearer $(gcloud auth print-identity-token)"
-```
+2.  **Environment Variables**:
+    The `.idx/dev.nix` file is pre-configured to read these secret names. It automatically sets the necessary environment variables (`SP_API_CLIENT_ID_SECRET_ID`, etc.) for the application to use.
 
-### 4. Brand Analytics Search Query Performance Report (WEEK) のみ実行
-Brand Analytics Search Query Performance Report (WEEK) の処理のみを実行します。
+3.  **Workspace Loading**:
+    When the IDX workspace loads, it uses the `dev.nix` file to:
+    *   Install the correct Python version.
+    *   Install all Python packages listed in `requirements.txt`.
+    *   Set the environment variables.
 
-```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=brand_analytics_report_weekly" \
--H "Authorization: bearer $(gcloud auth print-identity-token)"
-```
+    **No manual `pip install` is required.**
 
-### 5. Brand Analytics Search Query Performance Report (MONTH) のみ実行
-Brand Analytics Search Query Performance Report (MONTH) の処理のみを実行します。
+## Local Testing (Using the IDX Terminal)
 
-```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=brand_analytics_report_monthly" \
--H "Authorization: bearer $(gcloud auth print-identity-token)"
-```
+You can test the entire process or individual endpoints directly from the IDX terminal. The `main.py` file is configured to run as a local web server using the `functions-framework`.
 
-### 6. Ledger Detail View Data Report のみ実行
-Ledger Detail View Data Report の処理のみを実行します。
+1.  **Start the Local Server**:
+    Open a terminal in IDX and run the following command:
+    ```bash
+    functions-framework --target=main
+    ```
+    This will start a local server, typically on `http://localhost:8080`.
 
-```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=ledger_detail" \
--H "Authorization: bearer $(gcloud auth print-identity-token)"
-```
+2.  **Execute All Endpoints (Production Mode)**:
+    In a new terminal, use `curl` to send a POST request to the local server.
+    ```bash
+    curl -X POST http://localhost:8080
+    ```
 
-### 7. Ledger Summary View Data Report のみ実行
-Ledger Summary View Data Report の処理のみを実行します。
+3.  **Execute a Single Endpoint (Test Mode)**:
+    To test a specific endpoint, add the `endpoint` parameter to the URL in your `curl` command. The endpoint name must match one of the keys in the `ENDPOINT_MAP` in `main.py`.
 
-```bash
-curl -X POST "https://spapi-to-gcs-daily-850116866513.us-central1.run.app?endpoint=ledger_summary" \
--H "Authorization: bearer $(gcloud auth print-identity-token)"
-```
+    Example for `orders_api`:
+    ```bash
+    curl -X POST "http://localhost:8080?endpoint=orders_api"
+    ```
 
----
-**Note:**
-- `$(gcloud auth print-identity-token)` は、現在ログインしているユーザーまたはサービスアカウントのIDトークンを自動的に取得してヘッダーに設定します。
-- Cloud Run Functionsの認証設定で「認証が必要」となっている場合に必要です。
+    Example for `sales_and_traffic`:
+    ```bash
+    curl -X POST "http://localhost:8080?endpoint=sales_and_traffic"
+    ```
+
+## Deployment
+
+This service is intended for deployment on Google Cloud Run. Deployment is handled via GitHub integration, which automatically builds and deploys the service when changes are pushed to the main branch. The `requirements.txt` file ensures all dependencies are installed in the production environment.
