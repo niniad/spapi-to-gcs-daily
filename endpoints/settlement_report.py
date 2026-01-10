@@ -8,6 +8,7 @@ Settlement Report Module
 import requests
 import gzip
 import io
+import logging
 from datetime import datetime
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
@@ -40,7 +41,7 @@ def _format_date_for_filename(iso_datetime_str):
         dt = datetime.fromisoformat(iso_datetime_str.replace('Z', '+00:00'))
         return dt.strftime('%Y%m%d')
     except Exception as e:
-        print(f"  -> Warn: 日付変換エラー ({iso_datetime_str}): {e}")
+        logging.warning(f"日付変換エラー ({iso_datetime_str}): {e}")
         # フォールバック: 最初の10文字(YYYY-MM-DD)からハイフンを削除
         return iso_datetime_str[:10].replace('-', '')
 
@@ -53,7 +54,7 @@ def _generate_filename(report):
         report: レポート情報の辞書
         
     Returns:
-        str: GCSファイル名 (例: "sp-api-settlement-report-data-flat-file-v2-20251103-20251117-83983020409.tsv")
+        str: GCSファイル名 (例: "settlement-report-data-flat-file-v2-20251103-20251117.tsv")
     """
     start_date = _format_date_for_filename(report['dataStartTime'])
     end_date = _format_date_for_filename(report['dataEndTime'])
@@ -77,7 +78,7 @@ def _check_file_exists_in_gcs(bucket_name, blob_name):
         blob = bucket.blob(blob_name)
         return blob.exists()
     except Exception as e:
-        print(f"  -> Warn: GCS存在チェックエラー ({blob_name}): {e}")
+        logging.warning(f"GCS存在チェックエラー ({blob_name}): {e}")
         return False
 
 
@@ -96,9 +97,9 @@ def _upload_to_gcs(bucket_name, blob_name, content):
         blob = bucket.blob(blob_name)
         # TSVファイルとして保存
         blob.upload_from_string(content, content_type='text/tab-separated-values')
-        print(f"  -> GCSへの保存成功: gs://{bucket_name}/{blob_name}")
+        logging.info(f"GCSへの保存成功: gs://{bucket_name}/{blob_name}")
     except Exception as e:
-        print(f"  -> Error: GCSへのアップロードに失敗しました: {e}")
+        logging.error(f"GCSへのアップロードに失敗しました: {e}")
 
 
 def run():
@@ -112,7 +113,7 @@ def run():
        - GCSに既に保存されているかチェック
        - 未保存の場合のみダウンロードしてGCSに保存
     """
-    print("\n=== Settlement Report 処理開始 ===")
+    logging.info("=== Settlement Report 処理開始 ===")
     
     try:
         # アクセストークン取得
@@ -123,7 +124,7 @@ def run():
         }
         
         # 既存レポート一覧を取得
-        print("-> 既存レポート一覧を取得中...")
+        logging.info("-> 既存レポート一覧を取得中...")
         params = {
             'reportTypes': REPORT_TYPE,
             'marketplaceIds': MARKETPLACE_ID
@@ -137,11 +138,11 @@ def run():
         )
         
         reports = response.json().get('reports', [])
-        print(f"-> 取得したレポート数: {len(reports)}")
+        logging.info(f"-> 取得したレポート数: {len(reports)}")
         
         # DONE状態のレポートのみ処理
         done_reports = [r for r in reports if r.get('processingStatus') == 'DONE']
-        print(f"-> 処理対象レポート数 (DONE): {len(done_reports)}")
+        logging.info(f"-> 処理対象レポート数 (DONE): {len(done_reports)}")
         
         # 各レポートを処理
         downloaded_count = 0
@@ -152,7 +153,7 @@ def run():
             report_document_id = report.get('reportDocumentId')
             
             if not report_document_id:
-                print(f"  -> Warn: Report ID {report_id} にはreportDocumentIdがありません。スキップします。")
+                logging.warning(f"Report ID {report_id} にはreportDocumentIdがありません。スキップします。")
                 skipped_count += 1
                 continue
             
@@ -161,11 +162,11 @@ def run():
             
             # GCSに既に存在するかチェック
             if _check_file_exists_in_gcs(GCS_BUCKET_NAME, filename):
-                print(f"  -> スキップ (既存): {filename}")
+                logging.info(f"スキップ (既存): {filename}")
                 skipped_count += 1
                 continue
             
-            print(f"  -> ダウンロード開始: {filename}")
+            logging.info(f"ダウンロード開始: {filename}")
             
             try:
                 # レポートドキュメントのダウンロードURL取得
@@ -189,18 +190,18 @@ def run():
                     _upload_to_gcs(GCS_BUCKET_NAME, filename, report_content)
                     downloaded_count += 1
                 else:
-                    print(f"  -> Warn: レポート内容が空です。スキップします。")
+                    logging.warning(f"レポート内容が空です。スキップします。")
                     skipped_count += 1
             
             except Exception as e:
-                print(f"  -> Error: Report ID {report_id} の処理中にエラー発生: {e}")
+                logging.error(f"Report ID {report_id} の処理中にエラー発生: {e}")
                 skipped_count += 1
                 continue
         
-        print(f"\n-> ダウンロード完了: {downloaded_count}件")
-        print(f"-> スキップ: {skipped_count}件")
-        print("=== Settlement Report 処理完了 ===")
+        logging.info(f"ダウンロード完了: {downloaded_count}件")
+        logging.info(f"スキップ: {skipped_count}件")
+        logging.info("=== Settlement Report 処理完了 ===")
         
     except Exception as e:
-        print(f"Error: Settlement Report処理中に致命的なエラーが発生しました: {e}")
+        logging.error(f"Settlement Report処理中に致命的なエラーが発生しました: {e}")
         raise
