@@ -4,7 +4,7 @@ All Orders Report Module
 このモジュールは、SP-APIのAll Orders Report (GET_FLAT_FILE_ALL_ORDERS_DATA_BY_ORDER_DATE_GENERAL) を取得し、GCSに保存します。
 過去1週間分のデータを日次で取得し、GCS上のファイルを上書き更新します。
 """
-
+import logging
 import json
 import time
 import gzip
@@ -43,9 +43,9 @@ def _upload_to_gcs(bucket_name, blob_name, content):
         blob = bucket.blob(blob_name)
         # TSVファイルとして保存 (Content-Typeはtext/tab-separated-values推奨だが、扱いやすさのためtext/plainでも可)
         blob.upload_from_string(content, content_type='text/tab-separated-values; charset=utf-8')
-        print(f"  -> GCSへの保存成功: gs://{bucket_name}/{blob_name}")
+        logging.info(f"GCSへの保存成功: gs://{bucket_name}/{blob_name}")
     except Exception as e:
-        print(f"  -> Error: GCSへのアップロードに失敗しました: {e}")
+        logging.error(f"GCSへのアップロードに失敗しました: {e}", exc_info=True)
 
 
 def run():
@@ -58,7 +58,7 @@ def run():
        - レポートを作成・取得
        - GCSに保存 (同名ファイルは上書き)
     """
-    print("\n=== All Orders Report 処理開始 ===")
+    logging.info("=== All Orders Report 処理開始 ===")
     
     try:
         # アクセストークン取得
@@ -72,7 +72,7 @@ def run():
         utc_now = datetime.now(timezone.utc)
         start_date = utc_now - timedelta(days=START_DAYS_AGO)
         end_date = utc_now - timedelta(days=END_DAYS_AGO)
-        print(f"データ取得期間: {start_date.strftime('%Y-%m-%d')} から {end_date.strftime('%Y-%m-%d')}")
+        logging.info(f"データ取得期間: {start_date.strftime('%Y-%m-%d')} から {end_date.strftime('%Y-%m-%d')}")
         
         # 1. レポート作成リクエストを一括送信
         pending_reports = []
@@ -80,7 +80,7 @@ def run():
         current_date = start_date
         while current_date <= end_date:
             date_str = current_date.strftime('%Y-%m-%d')
-            print(f"\n[{date_str}] のレポート作成をリクエスト中...")
+            logging.info(f"[{date_str}] のレポート作成をリクエスト中...")
             
             try:
                 # レポート作成リクエスト
@@ -99,7 +99,7 @@ def run():
                     data=payload
                 )
                 report_id = response.json()["reportId"]
-                print(f"  -> Request OK (Report ID: {report_id})")
+                logging.info(f"Request OK (Report ID: {report_id})")
                 
                 pending_reports.append({
                     "report_id": report_id,
@@ -111,23 +111,22 @@ def run():
                 time.sleep(2)
                 
             except Exception as e:
-                print(f"  -> Error: [{date_str}] リクエスト失敗: {e}")
+                logging.error(f"[{date_str}] リクエスト失敗: {e}", exc_info=True)
 
             current_date += timedelta(days=1)
 
         # 2. レポート完了待機とダウンロード
-        print(f"\n--- レポート生成待ち (対象: {len(pending_reports)}件) ---")
+        logging.info(f"--- レポート生成待ち (対象: {len(pending_reports)}件) ---")
         
         max_loops = 40 # 30s * 40 = 20 mins
         completed_reports = []
         
         for i in range(max_loops):
             if len(completed_reports) == len(pending_reports):
-                print("全てのレポート処理が完了しました。")
+                logging.info("全てのレポート処理が完了しました。")
                 break
                 
-            print(f"\nステータス確認 (試行 {i+1}/{max_loops})...")
-            all_done_this_loop = True
+            logging.info(f"ステータス確認 (試行 {i+1}/{max_loops})...")
             
             for item in pending_reports:
                 report_id = item['report_id']
@@ -140,7 +139,7 @@ def run():
                     status = response.json().get("processingStatus")
                     
                     if status == "DONE":
-                        print(f"  -> Report {report_id} ({item['date_str']}): DONE")
+                        logging.info(f"Report {report_id} ({item['date_str']}): DONE")
                         report_document_id = response.json()["reportDocumentId"]
                         
                         # ダウンロード処理
@@ -154,14 +153,14 @@ def run():
                         try:
                             with gzip.open(io.BytesIO(dl_response.content), 'rt', encoding='utf-8') as f:
                                 content_to_save = f.read()
-                            print(f"    -> GZIP解凍完了")
+                            logging.info("GZIP解凍完了")
                         except gzip.BadGzipFile:
                             try:
                                 content_to_save = dl_response.content.decode('utf-8')
                             except UnicodeDecodeError:
                                 try:
                                     content_to_save = dl_response.content.decode('cp932')
-                                    print("    -> Shift_JIS(cp932)でデコードしました")
+                                    logging.info("Shift_JIS(cp932)でデコードしました")
                                 except UnicodeDecodeError:
                                     content_to_save = dl_response.content.decode('latin-1')
 
@@ -170,30 +169,27 @@ def run():
                             blob_name = f"{GCS_FILE_PREFIX}{item['current_date'].strftime('%Y%m%d')}.tsv"
                             _upload_to_gcs(GCS_BUCKET_NAME, blob_name, content_to_save)
                         else:
-                            print("    -> Warn: 内容が空のため保存スキップ")
+                            logging.warning("内容が空のため保存スキップ")
                             
                         completed_reports.append(report_id)
                         
                     elif status in ["FATAL", "CANCELLED"]:
-                        print(f"  -> Report {report_id}: Failed ({status})")
+                        logging.warning(f"Report {report_id}: Failed ({status})")
                         completed_reports.append(report_id)
-                    else:
-                        all_done_this_loop = False
-                
+
                 except Exception as e:
-                    print(f"  -> Error: Report {report_id} 処理中にエラー: {e}")
+                    logging.error(f"Report {report_id} 処理中にエラー", exc_info=True)
+                    # このレポートは処理済みとしてマークし、ループを続ける
+                    completed_reports.append(report_id)
             
             if len(completed_reports) == len(pending_reports):
                 break
             
-            if not all_done_this_loop:
+            if len(pending_reports) > len(completed_reports):
                 time.sleep(30)
         
-        print("\n=== All Orders Report 処理完了 ===")
+        logging.info("=== All Orders Report 処理完了 ===")
         
     except Exception as e:
-        print(f"Error: All Orders Report処理中に致命的なエラーが発生しました: {e}")
+        logging.critical("All Orders Report処理中に致命的なエラーが発生しました", exc_info=True)
         raise
-
-if __name__ == "__main__":
-    run()

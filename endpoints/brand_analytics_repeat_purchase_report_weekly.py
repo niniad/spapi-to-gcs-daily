@@ -10,6 +10,7 @@ Brand Analytics Repeat Purchase Report (Weekly) Module
 - 保存先: brand-analytics-repeat-purchase/weekly/YYYYMMDD.json
 """
 
+import logging
 import json
 import time
 import gzip
@@ -38,13 +39,13 @@ def _upload_to_gcs(bucket_name, blob_name, content):
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
         blob.upload_from_string(content, content_type='application/x-ndjson')
-        print(f"  -> GCSへの保存成功: gs://{bucket_name}/{blob_name}")
+        logging.info(f"GCSへの保存成功: gs://{bucket_name}/{blob_name}")
     except Exception as e:
-        print(f"  -> Error: GCSへのアップロードに失敗しました: {e}")
+        logging.error(f"GCSへのアップロードに失敗しました: {e}", exc_info=True)
 
 
 def run():
-    print("\n=== Brand Analytics Repeat Purchase Report (WEEK) 処理開始 ===")
+    logging.info("=== Brand Analytics Repeat Purchase Report (WEEK) 処理開始 ===")
     
     try:
         access_token = get_access_token()
@@ -54,30 +55,8 @@ def run():
         }
         
         # データ取得期間の計算 (先週の日曜日〜土曜日)
-        # Brand Analyticsの週次レポートは 日曜始まり・土曜終わり
         utc_now = datetime.now(timezone.utc)
-        
-        # 今日から見て「直近の土曜」とその「前の日曜」を特定する
-        # weekday(): 月=0, 火=1, ..., 土=5, 日=6
-        # もし今日が日曜(6)なら、先週の土曜(5)は昨日。
-        today_weekday = utc_now.weekday() # 0-6
-        days_since_saturday = (today_weekday + 1) % 7 + 1 # +1 for safely range, adjust later
-        
-        # 確実に完了している週を取得するため、2週間前のデータ取得を狙うか、
-        # あるいは「先週」を取得するか。
-        # AmazonのBAデータは確定に時間がかかる（24-48時間後）ため、3日前の土曜終了データなら安全。
-        
-        # シンプルに: 8日前を基準日とし、その基準日が含まれる週(日曜〜土曜)を対象にする
-        # これなら常に「完了した直近の週」になるはず。
         target_date = utc_now - timedelta(days=8)
-        
-        # target_dateの曜日に基づいて、その週の日曜を算出
-        # weekday(): 月=0 ... 日=6
-        # Pythonのweekdayは月曜始まり。
-        # target_dateが日曜(6)なら offset=0, 月曜(0)なら offset=1...
-        # Amazon週次は日曜開始。
-        # target_dateの曜日(0-6)から、その週の日曜日は...
-        # (target_date.weekday() + 1) % 7 が「日曜から何日目か(日曜=0, 月曜=1...)」
         days_from_sunday = (target_date.weekday() + 1) % 7
         report_start_date = target_date - timedelta(days=days_from_sunday)
         report_end_date = report_start_date + timedelta(days=6)
@@ -85,7 +64,7 @@ def run():
         start_date_str = report_start_date.strftime('%Y-%m-%d')
         end_date_str = report_end_date.strftime('%Y-%m-%d')
         
-        print(f"対象期間 (WEEK): {start_date_str} 〜 {end_date_str}")
+        logging.info(f"対象期間 (WEEK): {start_date_str} 〜 {end_date_str}")
         
         # レポート作成リクエスト
         payload_dict = {
@@ -105,7 +84,7 @@ def run():
             data=json.dumps(payload_dict)
         )
         report_id = response.json()["reportId"]
-        print(f"  -> レポート作成リクエスト成功 (Report ID: {report_id})")
+        logging.info(f"レポート作成リクエスト成功 (Report ID: {report_id})")
         
         # ポーリング
         processing_status = "IN_PROGRESS"
@@ -123,16 +102,16 @@ def run():
             
             if processing_status == "DONE":
                 report_document_id = data.get("reportDocumentId")
-                print("  -> レポート作成完了 (DONE)")
+                logging.info("レポート作成完了 (DONE)")
                 break
             elif processing_status in ["FATAL", "CANCELLED"]:
-                print(f"  -> Error: レポート処理失敗 Status: {processing_status}")
+                logging.error(f"レポート処理失敗 Status: {processing_status}")
                 return
             else:
-                print(f"  -> 処理中... ({processing_status})")
+                logging.info(f"処理中... ({processing_status})")
         
         if not report_document_id:
-            print("  -> Timeout: レポート作成が完了しませんでした。")
+            logging.error("Timeout: レポート作成が完了しませんでした。")
             return
 
         # ダウンロードURL取得
@@ -164,16 +143,13 @@ def run():
                     blob_name = f"{GCS_FILE_PREFIX}{end_date_str.replace('-', '')}.jsonl"
                     _upload_to_gcs(GCS_BUCKET_NAME, blob_name, jsonl_content)
                 else:
-                    print("  -> データ(dataByAsin)が含まれていません。")
+                    logging.warning("データ(dataByAsin)が含まれていません。")
             except json.JSONDecodeError:
-                print("  -> Error: JSONのパースに失敗しました。")
+                logging.error("JSONのパースに失敗しました。", exc_info=True)
         else:
-            print("  -> コンテンツが空でした。")
+            logging.warning("コンテンツが空でした。")
             
     except Exception as e:
-        print(f"Error: Brand Analytics Repeat Purchase (WEEK) 処理中にエラー: {e}")
-        import traceback
-        traceback.print_exc()
+        logging.critical(f"Brand Analytics Repeat Purchase (WEEK) 処理中にエラー: {e}", exc_info=True)
+        raise
 
-if __name__ == "__main__":
-    run()

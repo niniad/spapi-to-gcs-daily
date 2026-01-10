@@ -173,6 +173,3 @@ def run():
     except Exception:
         logging.error("An error occurred during FBA Inventory processing.", exc_info=True)
         raise
-
-if __name__ == "__main__":
-    run()

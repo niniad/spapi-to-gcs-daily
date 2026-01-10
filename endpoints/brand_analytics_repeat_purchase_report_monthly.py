@@ -10,6 +10,7 @@ Brand Analytics Repeat Purchase Report (Monthly) Module
 - 保存先: brand-analytics-repeat-purchase/monthly/YYYYMM.json
 """
 
+import logging
 import json
 import time
 import gzip
@@ -38,13 +39,13 @@ def _upload_to_gcs(bucket_name, blob_name, content):
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
         blob.upload_from_string(content, content_type='application/x-ndjson')
-        print(f"  -> GCSへの保存成功: gs://{bucket_name}/{blob_name}")
+        logging.info(f"GCSへの保存成功: gs://{bucket_name}/{blob_name}")
     except Exception as e:
-        print(f"  -> Error: GCSへのアップロードに失敗しました: {e}")
+        logging.error(f"GCSへのアップロードに失敗しました: {e}", exc_info=True)
 
 
 def run():
-    print("\n=== Brand Analytics Repeat Purchase Report (MONTH) 処理開始 ===")
+    logging.info("=== Brand Analytics Repeat Purchase Report (MONTH) 処理開始 ===")
     
     try:
         access_token = get_access_token()
@@ -65,7 +66,7 @@ def run():
         start_date_str = last_month_first.strftime('%Y-%m-%d')
         end_date_str = last_month_last.strftime('%Y-%m-%d')
         
-        print(f"対象期間 (MONTH): {start_date_str} 〜 {end_date_str}")
+        logging.info(f"対象期間 (MONTH): {start_date_str} 〜 {end_date_str}")
         
         # レポート作成リクエスト
         payload_dict = {
@@ -85,7 +86,7 @@ def run():
             data=json.dumps(payload_dict)
         )
         report_id = response.json()["reportId"]
-        print(f"  -> レポート作成リクエスト成功 (Report ID: {report_id})")
+        logging.info(f"レポート作成リクエスト成功 (Report ID: {report_id})")
         
         # ポーリング
         processing_status = "IN_PROGRESS"
@@ -103,16 +104,16 @@ def run():
             
             if processing_status == "DONE":
                 report_document_id = data.get("reportDocumentId")
-                print("  -> レポート作成完了 (DONE)")
+                logging.info("レポート作成完了 (DONE)")
                 break
             elif processing_status in ["FATAL", "CANCELLED"]:
-                print(f"  -> Error: レポート処理失敗 Status: {processing_status}")
+                logging.error(f"レポート処理失敗 Status: {processing_status}")
                 return
             else:
-                print(f"  -> 処理中... ({processing_status})")
+                logging.info(f"処理中... ({processing_status})")
         
         if not report_document_id:
-            print("  -> Timeout: レポート作成が完了しませんでした。")
+            logging.error("Timeout: レポート作成が完了しませんでした。")
             return
 
         # ダウンロードURL取得
@@ -145,16 +146,13 @@ def run():
                     blob_name = f"{GCS_FILE_PREFIX}{filename_suffix}.jsonl"
                     _upload_to_gcs(GCS_BUCKET_NAME, blob_name, jsonl_content)
                 else:
-                     print("  -> データ(dataByAsin)が含まれていません。")
+                     logging.warning("データ(dataByAsin)が含まれていません。")
             except json.JSONDecodeError:
-                print("  -> Error: JSONのパースに失敗しました。")
+                logging.error("JSONのパースに失敗しました。", exc_info=True)
         else:
-            print("  -> コンテンツが空でした。")
+            logging.warning("コンテンツが空でした。")
             
     except Exception as e:
-        print(f"Error: Brand Analytics Repeat Purchase (MONTH) 処理中にエラー: {e}")
-        import traceback
-        traceback.print_exc()
+        logging.critical(f"Brand Analytics Repeat Purchase (MONTH) 処理中にエラー: {e}", exc_info=True)
+        raise
 
-if __name__ == "__main__":
-    run()
