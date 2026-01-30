@@ -49,14 +49,16 @@ def _get_last_complete_week_range():
     """
     utc_now = datetime.now(timezone.utc)
     weekday = utc_now.weekday()  # Monday=0, ..., Sunday=6
-    days_since_saturday = (weekday - 5) % 7
-    # if today is Sat(5), days_since_saturday = 0. We need last week's Sat, so need to go back 7 days
-    # if today is Sun(6), days_since_saturday = 1. The last Sat was 1 day ago.
-    # if today is Fri(4), days_since_saturday = -1 % 7 = 6. The last Sat was 6 days ago.
-    # To make it simple and safe, let's target the Saturday before last.
-    days_to_last_saturday = (weekday - 5 + 7) % 7
-    end_date_of_report_week = utc_now - timedelta(days=days_to_last_saturday + 1) #+1 to get previous week
+    
+    # Calculate days to subtract to find the most recent Saturday
+    # If Mon(0) -> 2 days ago (Sat)
+    # If Sat(5) -> 7 days ago (Sat)
+    # If Sun(6) -> 1 day ago (Sat)
+    days_to_subtract = (weekday + 1) % 7 + 1
+    
+    end_date_of_report_week = utc_now - timedelta(days=days_to_subtract)
     start_date_of_report_week = end_date_of_report_week - timedelta(days=6)
+    
     return start_date_of_report_week, end_date_of_report_week
 
 
