@@ -28,6 +28,22 @@ def get_access_token():
     """
     print("-> SP-APIアクセストークンを取得中...")
     
+    # Manual .env loader (Fallback for local execution)
+    if not os.environ.get("SP_API_REFRESH_TOKEN"):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        env_path = os.path.join(current_dir, '../../.env')
+        if os.path.exists(env_path):
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#') or '=' not in line: continue
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    if (key.startswith('"') and key.endswith('"')) or (key.startswith("'") and key.endswith("'")): key = key[1:-1]
+                    value = value.strip()
+                    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")): value = value[1:-1]
+                    os.environ[key] = value
+
     # 環境変数から認証情報を取得
     client_id = os.environ.get("SP_API_CLIENT_ID")
     client_secret = os.environ.get("SP_API_CLIENT_SECRET")
