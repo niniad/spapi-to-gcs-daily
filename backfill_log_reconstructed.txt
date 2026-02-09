@@ -1,0 +1,8 @@
+
+2026-02-08 01:48:22,859 - INFO - === Settlement Report Backfill Start: 2023-01-30 ~ 2023-02-13 ===
+-> SP-APIアクセストークンを取得中...
+-> SP-APIアクセストークンの取得に成功しました。
+2026-02-08 01:48:23,546 - INFO - Found 1 local files. Uploading to GCS...
+2026-02-08 01:48:23,546 - INFO - Parsed dates from file: 20230130 - 20230213. New filename: settlement-report-data-flat-file-v2/20230130-20230213.tsv
+2026-02-08 01:48:23,800 - INFO - Successfully uploaded to GCS: gs://spapi-bucket/settlement-report-data-flat-file-v2/20230130-20230213.tsv
+2026-02-08 01:48:23,800 - INFO - Uploaded local file: 90390020491.txt as settlement-report-data-flat-file-v2/20230130-20230213.tsv
