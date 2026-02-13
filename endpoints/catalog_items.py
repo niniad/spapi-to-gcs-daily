@@ -118,9 +118,11 @@ def run():
             else:
                 raise FileNotFoundError(f"FBA在庫ファイルが見つかりません: {inventory_filename}")
 
+        except FileNotFoundError:
+            raise
         except Exception:
             logging.error("GCSからのASIN一覧取得に失敗", exc_info=True)
-            return
+            raise
         
         if not asin_list:
             logging.warning("ASIN一覧が空です")
