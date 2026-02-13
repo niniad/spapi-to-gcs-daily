@@ -97,7 +97,7 @@ def run():
         asin_list = []
         try:
             current_date = datetime.now().strftime("%Y%m%d")
-            inventory_filename = f"fba-inventory/{current_date}.json"
+            inventory_filename = f"fba-inventory/{current_date}.jsonl"
             
             storage_client = storage.Client()
             bucket = storage_client.bucket(GCS_BUCKET_NAME)
@@ -116,9 +116,7 @@ def run():
                 asin_list = sorted(list(set(asin_list)))
                 logging.info(f"GCS Inventory Found: {inventory_filename}")
             else:
-                logging.warning(f"FBA在庫ファイルが見つかりません: {inventory_filename}")
-                logging.warning("FBA Inventory APIが先に実行されているか確認してください。")
-                return
+                raise FileNotFoundError(f"FBA在庫ファイルが見つかりません: {inventory_filename}")
 
         except Exception:
             logging.error("GCSからのASIN一覧取得に失敗", exc_info=True)
